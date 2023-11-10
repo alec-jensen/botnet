@@ -62,6 +62,8 @@ class ConnectionManager:
         for conn in self.active_connections:
             if conn.uuid == uuid:
                 return conn
+            
+        return None
 
     async def connect(self, websocket: WebSocket, uuid: str):
         await websocket.accept()
@@ -208,8 +210,6 @@ async def send_command(uuid: str, command: AgentCommand):
 
     await manager.send_personal_message({"command": command.command, "limitations": command.limitations}, uuid)
 
-    return responses.Response("", 200)
-
     conn = manager.get_connection(uuid)
 
     try:
@@ -235,23 +235,23 @@ async def agent_ws(websocket: fastapi.WebSocket, uuid: str):
     # Authenticate the agent
     data = await websocket.receive_json()
     if data is None:
-        await websocket.close(code=400, reason="No data provided.")
+        await websocket.close(code=1000, reason="No data provided.")
         manager.disconnect(websocket)
         return
 
     if data.get("secret") is None:
-        await websocket.close(code=400, reason="No secret provided.")
+        await websocket.close(code=1000, reason="No secret provided.")
         manager.disconnect(websocket)
         return
 
     agent = await db.agents.find_one(Schemas.AgentSchema(uuid=uuid))
     if agent is None:
-        await websocket.close(code=400, reason="Agent not found.")
+        await websocket.close(code=1000, reason="Agent not found.")
         manager.disconnect(websocket)
         return
 
     if not pwd_context.verify(data.get("secret"), agent.secret):
-        await websocket.close(code=401, reason="Invalid secret.")
+        await websocket.close(code=1000, reason="Invalid secret.")
         await manager.disconnect(websocket)
         return
     
@@ -259,17 +259,11 @@ async def agent_ws(websocket: fastapi.WebSocket, uuid: str):
 
     try:
         while True:
-            start = time.perf_counter()
             data = await websocket.receive_json()
-            end = time.perf_counter()
-            print(f"Received data in {end - start} seconds.")
-            start = time.perf_counter()
-            data = json.loads(data)
-            conn._rec_buffer.put(data)
-            end = time.perf_counter()
-            print(f"Received data in {end - start} seconds.")
+            await conn._rec_buffer.put(data)
     except fastapi.WebSocketDisconnect as e:
         manager.disconnect(websocket)
+        return
 
 
 @app.get("/user/{uuid}")
