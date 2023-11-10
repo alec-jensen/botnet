@@ -1,13 +1,15 @@
 import fastapi
-from fastapi import responses, WebSocket
+from fastapi import responses, WebSocket, Request
 import uvicorn
 from uuid import uuid4
 import secrets
 from passlib.context import CryptContext
 import time
 from pydantic import BaseModel
-import json
 import asyncio
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
 
 from config import Config
 from database import Database
@@ -37,8 +39,6 @@ class User(BaseModel):
 class AllowUser(BaseModel):
     username: str
     password: str
-
-    target_user: str
 
 
 class Connection:
@@ -106,11 +106,17 @@ db: Database = Database(config.dbstring)
 
 app = fastapi.FastAPI()
 
+limiter = Limiter(key_func=get_remote_address)
+
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 
 @app.get("/agent/register")
-async def register_agent(version: int, name: str = None, description: str = None):
+@limiter.limit("5/hour")
+async def register_agent(request: Request, version: int, name: str = None, description: str = None):
     """
     Register an agent with the server.
     :param name: The name of the agent.
@@ -139,9 +145,9 @@ async def register_agent(version: int, name: str = None, description: str = None
 
     return responses.JSONResponse(response, status_code=200)
 
-
+# TODO: this requires authentication as either the agent or a user
 @app.get("/agent/{uuid}")
-async def get_agent(uuid: str):
+async def get_agent(request: Request, uuid: str):
     """
     Get an agent's information.
     :param uuid: The agent's UUID.
@@ -155,9 +161,22 @@ async def get_agent(uuid: str):
 
     return responses.JSONResponse(agent.to_dict(), status_code=200)
 
+# TODO: this requires authentication as a user
+@app.get("/agents/{page}")
+async def get_agents(request: Request, page: int, limit: int = 10):
+    """
+    Get a page of agents.
+    :param page: The page number.
+    :return: The agents.
+    """
 
+    agents = await db.agents.find({}).skip(page * limit).limit(limit).to_list(length=limit)
+
+    return responses.JSONResponse(agents, status_code=200)
+
+# TODO: this requires authentication as either the agent or a user
 @app.post("/agent/{uuid}/update")
-async def update_agent(uuid: str, update: UpdateAgent):
+async def update_agent(request: Request, uuid: str, update: UpdateAgent):
     """
     Update an agent's information.
     :param uuid: The agent's UUID.
@@ -188,9 +207,9 @@ async def update_agent(uuid: str, update: UpdateAgent):
 
     return responses.JSONResponse(agent.to_dict(), status_code=200)
 
-
+# TODO: this requires authentication as a user
 @app.post("/agent/{uuid}/command")
-async def send_command(uuid: str, command: AgentCommand):
+async def send_command(request: Request, uuid: str, command: AgentCommand):
     """
     Send a command to an agent.
     :param uuid: The agent's UUID.
@@ -267,7 +286,7 @@ async def agent_ws(websocket: fastapi.WebSocket, uuid: str):
 
 
 @app.get("/user/{uuid}")
-async def get_user(uuid: str):
+async def get_user(request: Request, uuid: str):
     """
     Get a user's information.
     :param uuid: The user's UUID.
@@ -283,7 +302,8 @@ async def get_user(uuid: str):
 
 
 @app.post("/user/register")
-async def register_user(user: User):
+@limiter.limit("5/hour")
+async def register_user(request: Request, user: User):
     """
     Register a user with the server.
     :param username: The user's username.
@@ -305,7 +325,7 @@ async def register_user(user: User):
 
 
 @app.post("/user/login")
-async def login_user(user: User):
+async def login_user(request: Request, user: User):
     """
     Login a user.
     :param username: The user's username.
@@ -340,7 +360,7 @@ async def login_user(user: User):
 
 
 @app.post("/user/{uuid}/allow")
-async def authorize_user(uuid: str, allow: AllowUser):
+async def authorize_user(request: Request, uuid: str, allow: AllowUser):
     """
     Allow a user to use the API.
     :param username: The user's username.
@@ -348,7 +368,7 @@ async def authorize_user(uuid: str, allow: AllowUser):
     :return: The user's UUID.
     """
 
-    user = await db.users.find_one(Schemas.UserSchema(username=allow.username))
+    user: Schemas.UserSchema = await db.users.find_one(Schemas.UserSchema(uuid=uuid))
 
     if user is None:
         return responses.JSONResponse({"error": "User not found."}, status_code=404)
@@ -356,7 +376,7 @@ async def authorize_user(uuid: str, allow: AllowUser):
     if not pwd_context.verify(allow.password, user.password):
         return responses.JSONResponse({"error": "Invalid password."}, status_code=401)
 
-    await db.users.update_one(Schemas.UserSchema(username=allow.target_user), {"$set": {"is_allowed": True}})
+    await db.users.update_one(Schemas.UserSchema(uuid=uuid), {"$set": {"is_allowed": True}})
 
     return responses.JSONResponse(user.to_dict(), status_code=200)
 
