@@ -27,3 +27,5 @@ To create an agent, you must first register it through the API. Once that is don
 ### Sending Commands
 
 To send commands to the agents, you need to register a user through the API. Once that is done, go into MongoDB, find the user in the `users` collection, and edit the `is_allowed` field to `true`. Then, you can send commands to the agents through the API.
+
+*This readme is purposely vague to prevent script kiddies from using this for malicious purposes. If you are using this for educational purposes, you should be able to figure out how to use it.*
