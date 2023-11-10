@@ -6,6 +6,8 @@ import secrets
 from passlib.context import CryptContext
 import time
 from pydantic import BaseModel
+import json
+import asyncio
 
 from config import Config
 from database import Database
@@ -43,11 +45,23 @@ class Connection:
     def __init__(self, websocket: WebSocket, uuid: str):
         self.websocket = websocket
         self.uuid = uuid
+        self._rec_buffer = asyncio.Queue()
+
+    async def send_json(self, message: dict):
+        await self.websocket.send_json(message)
+
+    async def receive_json(self):
+        return await self._rec_buffer.get()
 
 
 class ConnectionManager:
     def __init__(self):
         self.active_connections: list[Connection] = []
+
+    def get_connection(self, uuid: str):
+        for conn in self.active_connections:
+            if conn.uuid == uuid:
+                return conn
 
     async def connect(self, websocket: WebSocket, uuid: str):
         await websocket.accept()
@@ -184,6 +198,9 @@ async def send_command(uuid: str, command: AgentCommand):
 
     agent: Schemas.AgentSchema = await db.agents.find_one(Schemas.AgentSchema(uuid=uuid))
 
+    if agent is None:
+        return responses.JSONResponse({"error": "Agent not found."}, status_code=404)
+
     if command.limitations is not None:
         for limitation in command.limitations:
             if limitation not in allLimitations:
@@ -191,15 +208,24 @@ async def send_command(uuid: str, command: AgentCommand):
 
     await manager.send_personal_message({"command": command.command, "limitations": command.limitations}, uuid)
 
-    return responses.JSONResponse(agent.to_dict(), status_code=200)
+    return responses.Response("", 200)
+
+    conn = manager.get_connection(uuid)
+
+    try:
+        res = await conn.receive_json()
+    except fastapi.WebSocketDisconnect as e:
+        return responses.JSONResponse({"error": "Agent not connected."}, status_code=401)
+
+    return responses.JSONResponse(res, status_code=200)
 
 
 @app.websocket("/agent/{uuid}/ws")
-async def agent_ws(uuid: str, websocket: fastapi.WebSocket):
+async def agent_ws(websocket: fastapi.WebSocket, uuid: str):
     """
     Handle an agent's websocket connection.
-    :param uuid: The agent's UUID.
     :param websocket: The websocket connection.
+    :param uuid: The agent's UUID.
 
     :return: None
     """
@@ -228,12 +254,20 @@ async def agent_ws(uuid: str, websocket: fastapi.WebSocket):
         await websocket.close(code=401, reason="Invalid secret.")
         await manager.disconnect(websocket)
         return
+    
+    conn = manager.get_connection(uuid)
 
     try:
         while True:
+            start = time.perf_counter()
             data = await websocket.receive_json()
-            print(data)
-            await websocket.send_json({"status": "ok"})
+            end = time.perf_counter()
+            print(f"Received data in {end - start} seconds.")
+            start = time.perf_counter()
+            data = json.loads(data)
+            conn._rec_buffer.put(data)
+            end = time.perf_counter()
+            print(f"Received data in {end - start} seconds.")
     except fastapi.WebSocketDisconnect as e:
         manager.disconnect(websocket)
 

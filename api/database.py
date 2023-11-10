@@ -1,7 +1,3 @@
-# Database wrapper for intellisense
-# Copyright (C) 2023  Alec Jensen
-# Full license at LICENSE.md
-
 from typing import Any
 import motor.motor_asyncio
 
