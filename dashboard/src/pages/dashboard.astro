@@ -1,0 +1,25 @@
+---
+
+---
+
+<script>
+  import { API_URL } from "../consts";
+  import { getCookie } from "../cookies";
+
+  fetch(API_URL + "/user/" + getCookie("uuid"))
+    .then((response) => response.json())
+    .then((data) => {
+      document.getElementById("username").innerHTML = data.username;
+    });
+</script>
+
+<html>
+  <head>
+    <title>Dashboard</title>
+  </head>
+
+  <body>
+    <h1>Dashboard</h1>
+    <h2>Hello, <a id="username">Loading...</a></h2>
+  </body>
+</html>

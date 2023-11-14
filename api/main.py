@@ -1,4 +1,5 @@
 import fastapi
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi import responses, WebSocket, Request
 import uvicorn
 from uuid import uuid4
@@ -23,7 +24,7 @@ class UpdateAgent(BaseModel):
     secret: str
 
 
-allLimitations = ['linux', 'windows', 'macos']
+allLimitations = ['win32', 'darwin', 'linux', 'linux2', 'no-vm', 'no-container']
 
 
 class AgentCommand(BaseModel):
@@ -35,17 +36,19 @@ class User(BaseModel):
     username: str
     password: str
 
-
-class AllowUser(BaseModel):
-    username: str
-    password: str
+class UUIDAndToken(BaseModel):
+    uuid: str
+    token: str
 
 
 class Connection:
-    def __init__(self, websocket: WebSocket, uuid: str):
+    def __init__(self, websocket: WebSocket, uuid: str, platform: str = None, architecture: str = None, vm: bool = None):
         self.websocket = websocket
         self.uuid = uuid
         self._rec_buffer = asyncio.Queue()
+        self.platform = platform
+        self.architecture = architecture
+        self.vm = vm
 
     async def send_json(self, message: dict):
         await self.websocket.send_json(message)
@@ -97,7 +100,6 @@ class ConnectionManager:
         for connection in self.active_connections:
             await connection.websocket.send_json(message)
 
-
 manager = ConnectionManager()
 
 config: Config = Config()
@@ -105,6 +107,18 @@ config: Config = Config()
 db: Database = Database(config.dbstring)
 
 app = fastapi.FastAPI()
+
+origins = [
+    "*"
+]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 limiter = Limiter(key_func=get_remote_address)
 
@@ -276,6 +290,10 @@ async def agent_ws(websocket: fastapi.WebSocket, uuid: str):
     
     conn = manager.get_connection(uuid)
 
+    conn.platform = data.get("platform")
+    conn.architecture = data.get("architecture")
+    conn.vm = data.get("vm")
+
     try:
         while True:
             data = await websocket.receive_json()
@@ -330,7 +348,7 @@ async def login_user(request: Request, user: User):
     Login a user.
     :param username: The user's username.
     :param password: The user's password.
-    :return: The user's UUID.
+    :return: Object containing access token
     """
 
     dbuser: Schemas.UserSchema = await db.users.find_one(Schemas.UserSchema(username=user.username))
@@ -356,25 +374,69 @@ async def login_user(request: Request, user: User):
     dbuser.auth_timeout = auth_token_timeout
     diff["$set"]["auth_timeout"] = auth_token_timeout
 
+    await db.users.update_one(Schemas.UserSchema(username=user.username), diff)
+
     return responses.JSONResponse(dbuser.to_dict(), status_code=200)
 
-
-@app.post("/user/{uuid}/allow")
-async def authorize_user(request: Request, uuid: str, allow: AllowUser):
-    """
-    Allow a user to use the API.
-    :param username: The user's username.
-    :param password: The user's password.
-    :return: The user's UUID.
-    """
-
-    user: Schemas.UserSchema = await db.users.find_one(Schemas.UserSchema(uuid=uuid))
+@app.post('/user/verify')
+async def verify_token(request: Request, verify_user: UUIDAndToken):
+    user: Schemas.UserSchema = await db.users.find_one(Schemas.UserSchema(uuid=verify_user.uuid))
 
     if user is None:
         return responses.JSONResponse({"error": "User not found."}, status_code=404)
+    if not pwd_context.verify(verify_user.token, user.auth_token):
+        return responses.JSONResponse({"error": "Invalid token."}, status_code=401)
+    if user.auth_timeout < time.time():
+        return responses.JSONResponse({"error": "Token has expired."}, status_code=401)
+    
+    return responses.JSONResponse(user.to_dict(), status_code=200)
+    
+@app.post('/user/renew')
+async def renew_token(request: Request, renew_user: UUIDAndToken):
+    user: Schemas.UserSchema = await db.users.find_one(Schemas.UserSchema(uuid=renew_user.uuid))
 
-    if not pwd_context.verify(allow.password, user.password):
-        return responses.JSONResponse({"error": "Invalid password."}, status_code=401)
+    if user is None:
+        return responses.JSONResponse({"error": "User not found."}, status_code=404)
+    if not pwd_context.verify(renew_user.token, user.auth_token):
+        return responses.JSONResponse({"error": "Invalid token."}, status_code=401)
+    if user.auth_timeout < time.time():
+        return responses.JSONResponse({"error": "Token has expired."}, status_code=401)
+    
+    diff = {"$set": {"auth_token": "", "auth_timeout": 0}}
+
+    auth_token = secrets.token_urlsafe(32)
+    user.auth_token = auth_token
+
+    auth_token_hashed = pwd_context.hash(auth_token)
+    diff["$set"]["auth_token"] = auth_token_hashed
+
+    auth_token_timeout = int(time.time()) + 5260000  # 2 months
+    user.auth_timeout = auth_token_timeout
+    diff["$set"]["auth_timeout"] = auth_token_timeout
+
+    await db.users.update_one(Schemas.UserSchema(uuid=renew_user.uuid), diff)
+
+    return responses.JSONResponse(user.to_dict(), status_code=200)
+
+
+@app.post("/user/{uuid}/allow")
+async def authorize_user(request: Request, uuid: str, allow: UUIDAndToken):
+    user: Schemas.UserSchema = await db.users.find_one(Schemas.UserSchema(uuid=allow.uuid))
+
+    if user is None:
+        return responses.JSONResponse({"error": "User not found."}, status_code=404)
+    if not pwd_context.verify(allow.token, user.auth_token):
+        return responses.JSONResponse({"error": "Invalid token."}, status_code=401)
+    if user.auth_timeout > time.time():
+        return responses.JSONResponse({"error": "Token has expired."}, status_code=401)
+    
+    if not user.is_allowed:
+        return responses.JSONResponse({"error": "User not allowed."}, status_code=401)
+
+    target: Schemas.UserSchema = await db.users.find_one(Schemas.UserSchema(uuid=uuid))
+
+    if target is None:
+        return responses.JSONResponse({"error": "Target not found."}, status_code=404)
 
     await db.users.update_one(Schemas.UserSchema(uuid=uuid), {"$set": {"is_allowed": True}})
 
@@ -383,11 +445,21 @@ async def authorize_user(request: Request, uuid: str, allow: AllowUser):
 
 def main():
     import argparse
+    import os
 
     parser = argparse.ArgumentParser()
     parser.add_argument("--port", type=int, default=8000)
     parser.add_argument("--host", type=str, default="0.0.0.0")
     args = parser.parse_args()
+
+    if args.port == 8000:
+        if os.environ.get("API_PORT"):
+            if os.environ.get("API_PORT").isnumeric():
+                args.port = int(os.environ.get("API_PORT"))
+
+    if args.host == "0.0.0.0":
+        if os.environ.get("API_HOST"):
+            args.host = os.environ.get("API_HOST")
 
     uvicorn.run(app, host=args.host, port=args.port)
 

@@ -1,0 +1,46 @@
+---
+
+---
+
+<script>
+  import { getCookie } from "../cookies.js";
+  import { API_URL } from "../consts.js";
+
+  let token = getCookie("token");
+  let uuid = getCookie("uuid");
+
+  if (token == "") {
+    window.location.href = "/login";
+  }
+  if (uuid == "") {
+    window.location.href = "/login";
+  }
+
+  window.onload = () => {
+    fetch(`${API_URL}/user/verify`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        token: token,
+        uuid: uuid,
+      }),
+    })
+      .then((res) => {
+        if (res.status != 200) {
+          window.location.href = "/login";
+        }
+
+        window.location.href = "/dashboard";
+      })
+  };
+</script>
+
+<html>
+  <body>
+    <h1>Redirecting...</h1>
+  </body>
+</html>
+
+<style></style>

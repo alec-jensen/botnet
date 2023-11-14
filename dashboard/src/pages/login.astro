@@ -1,0 +1,89 @@
+---
+
+---
+
+<script>
+  import { getCookie, setCookie } from "../cookies.js";
+  import { API_URL } from "../consts.js";
+
+  let token = getCookie("token");
+  let uuid = getCookie("uuid");
+
+  window.onload = () => {
+    const params = new URLSearchParams(window.location.search);
+    const username = params.get("username");
+    const password = params.get("password");
+
+    if (username && password) {
+      fetch(`${API_URL}/user/login`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          username: username,
+          password: password,
+        }),
+      })
+        .then((res) => {
+          if (res.status != 200) {
+            document.getElementById("error").innerHTML =
+              "Username or password is incorrect";
+          }
+
+          return res.json();
+        })
+        .then((res) => {
+          let expiryMS = res.auth_timeout * 1000;
+          setCookie("token", res.auth_token, expiryMS);
+          setCookie("uuid", res.uuid, expiryMS);
+          window.location.href = "/dashboard";
+        });
+      return;
+    }
+
+    if (token == "" && uuid == "") {
+      return;
+    }
+
+    fetch(`${API_URL}/user/verify`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        token: token,
+        uuid: uuid,
+      }),
+    })
+      .then((res) => res.json())
+      .then((res) => {
+        if (res.status == "success") {
+          window.location.href = "/dashboard";
+        }
+      });
+  };
+</script>
+
+<html>
+  <body>
+    <h1>Login</h1>
+
+    <form action="/login" method="GET">
+      <label for="text">Username</label>
+      <input type="text" id="username" name="username" required />
+
+      <label for="password">Password</label>
+      <input type="password" id="password" name="password" required />
+
+      <input type="submit" value="Login" />
+    </form>
+    <p id="error"></p>
+  </body>
+</html>
+
+<style>
+  p #error {
+    color: red;
+  }
+</style>
