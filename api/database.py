@@ -45,7 +45,7 @@ class Schemas:
             return getattr(self, key)
 
     class AgentSchema(BaseSchema):
-        def __init__(self, uuid: str | None = None, secret: str | None = None, name: str | None = None, description: str | None = None, version: int | None = None, created_at: int | None = None) -> None:
+        def __init__(self, uuid: str | None = None, secret: str | None = None, name: str | None = None, description: str | None = None, version: int | None = None, created_at: int | None = None, last_seen: int | None = None) -> None:
             self.uuid: str | None = convert_except_none(uuid, str)
             self.secret: str | None = convert_except_none(secret, str)
             self.name: str | None = convert_except_none(name, str)
@@ -53,13 +53,14 @@ class Schemas:
                 description, str)
             self.version: int | None = convert_except_none(version, int)
             self.created_at: int | None = convert_except_none(created_at, int)
+            self.last_seen: int | None = convert_except_none(last_seen, int)
 
         @classmethod
         def from_dict(cls, data: dict | None) -> 'Schemas.AgentSchema':
             if data is None:
                 return cls()
 
-            return cls(data.get('uuid', None), data.get('secret', None), data.get('name', None), data.get('description', None), data.get('version', None), data.get('created_at', None))
+            return cls(data.get('uuid', None), data.get('secret', None), data.get('name', None), data.get('description', None), data.get('version', None), data.get('created_at', None), data.get('last_seen', None))
 
         def to_dict(self) -> dict:
             return remove_none_values({
@@ -68,18 +69,21 @@ class Schemas:
                 'name': self.name,
                 'description': self.description,
                 'version': self.version,
-                'created_at': self.created_at
+                'created_at': self.created_at,
+                'last_seen': self.last_seen
             })
-        
+
     class UserSchema(BaseSchema):
         def __init__(self, uuid: str | None = None, username: str | None = None, password: str | None = None, created_at: int | None = None, is_allowed: bool | None = None, auth_token: str | None = None, auth_timeout: int | None = None) -> None:
             self.uuid: str | None = convert_except_none(uuid, str)
             self.username: str | None = convert_except_none(username, str)
             self.password: str | None = convert_except_none(password, str)
             self.created_at: int | None = convert_except_none(created_at, int)
-            self.is_allowed: bool | None = convert_except_none(is_allowed, bool)
+            self.is_allowed: bool | None = convert_except_none(
+                is_allowed, bool)
             self.auth_token: str | None = convert_except_none(auth_token, str)
-            self.auth_timeout: int | None = convert_except_none(auth_timeout, int)
+            self.auth_timeout: int | None = convert_except_none(
+                auth_timeout, int)
 
         @classmethod
         def from_dict(cls, data: dict | None) -> 'Schemas.UserSchema':
@@ -87,7 +91,7 @@ class Schemas:
                 return cls()
 
             return cls(data.get('uuid', None), data.get('username', None), data.get('password', None), data.get('created_at', None), data.get('is_allowed', None), data.get('auth_token', None), data.get('auth_timeout', None))
-        
+
         def to_dict(self) -> dict:
             return remove_none_values({
                 'uuid': self.uuid,
@@ -125,7 +129,8 @@ class Collection:
             schema = query.__class__
             query = query.to_dict()
 
-        documents: motor.motor_asyncio.AsyncIOMotorCursor = self.collection.find(query)
+        documents: motor.motor_asyncio.AsyncIOMotorCursor = self.collection.find(
+            query)
         if schema is None:
             schema = self.schema
 
@@ -174,7 +179,7 @@ class Database:
     @property
     def agents(self) -> Collection:
         return Collection(self.database.agents)
-    
+
     @property
     def users(self) -> Collection:
         return Collection(self.database.users)

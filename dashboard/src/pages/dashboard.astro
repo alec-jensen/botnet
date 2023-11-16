@@ -1,36 +1,34 @@
 ---
+
 ---
 
 <script>
   import { API_URL } from "../consts";
   import { getCookie, setCookie } from "../cookies";
 
+  let token = getCookie("token");
+
+  let uuid = token.split("::")[0];
+
   fetch(`${API_URL}/user/verify`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
+      authorization: `Bearer ${token}`,
     },
-    body: JSON.stringify({
-      token: getCookie("token"),
-      uuid: getCookie("uuid"),
-    }),
-  })
-    .then((res) => {
-      if (res.status != 200) {
-        window.location.href = "/login";
-      }
-    });
+  }).then((res) => {
+    if (res.status != 200) {
+      window.location.href = "/login";
+    }
+  });
 
   document.getElementById("logout").addEventListener("click", () => {
     fetch(API_URL + "/user/invalidate_token", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
+        authorization: "Bearer " + getCookie("token"),
       },
-      body: JSON.stringify({
-        token: getCookie("token"),
-        uuid: getCookie("uuid"),
-      }),
     }).then((res) => {
       if (res.ok) {
         setCookie("token", "", 0);
@@ -40,13 +38,28 @@
   });
 
   let page = 0;
-  let amount = 10;
+  let limit = 2;
+  let total_pages;
 
-  fetch(API_URL + "/user/" + getCookie("uuid"), {
+  let params = new URLSearchParams(window.location.search);
+
+  if (params.has("page")) {
+    page = Number(params.get("page"));
+  }
+
+  if (params.has("limit")) {
+    limit = Number(params.get("limit"));
+  }
+
+  if (params.has("agent")) {
+    loadModal(params.get("agent"));
+  }
+
+  fetch(API_URL + "/user/" + uuid, {
     method: "GET",
     headers: {
       "Content-Type": "application/json",
-      "authorization": "Bearer " + getCookie("token"),
+      authorization: "Bearer " + getCookie("token"),
     },
   })
     .then((response) => {
@@ -62,18 +75,134 @@
       document.getElementById("username").innerHTML = data.username;
     });
 
-  fetch(API_URL + "/agents/" + page + "?amount=" + amount)
-    .then((response) => {
-      if (!response.ok) {
-        document.getElementById("error").innerHTML =
-          "Error: " + response.status + " " + response.statusText;
-        return;
+  function loadModal(uuid) {
+    fetch(`${API_URL}/agent/${uuid}`, {
+      method: "GET",
+      headers: {
+        "Content-Type": "application/json",
+        authorization: `Bearer ${token}`,
+      },
+    }).then((res) => {
+      if (res.ok) {
+        res.json().then((data) => {
+          document.getElementById(
+            "agent_uuid"
+          ).innerHTML = `Agent UUID: ${data.uuid}`;
+          document.getElementById(
+            "agent_name"
+          ).innerHTML = `Agent Name: ${data.name}`;
+          document.getElementById(
+            "agent_version"
+          ).innerHTML = `Agent Version: ${data.version}`;
+          document.getElementById(
+            "agent_os"
+          ).innerHTML = `Agent OS: ${data.os}`;
+          document.getElementById(
+            "agent_ip"
+          ).innerHTML = `Agent IP: ${data.ip}`;
+          document.getElementById(
+            "agent_status"
+          ).innerHTML = `Agent Status: ${data.status}`;
+          document.getElementById(
+            "agent_last_seen"
+          ).innerHTML = `Agent Last Seen: ${data.last_seen}`;
+          document.getElementById("agent_info").close();
+          document.getElementById("agent_info").showModal();
+        });
       }
+    });
+  }
 
-      return response.json();
+  function loadAgents() {
+    fetch(API_URL + "/agents/" + page + "?limit=" + limit, {
+      method: "GET",
+      headers: {
+        "Content-Type": "application/json",
+        authorization: "Bearer " + getCookie("token"),
+      },
     })
-    .then((data) => {
-      console.log(data);
+      .then((response) => {
+        if (!response.ok) {
+          document.getElementById("error").innerHTML =
+            "Error: " + response.status + " " + response.statusText;
+          return;
+        }
+
+        return response.json();
+      })
+      .then((data) => {
+        total_pages = data.total_pages;
+
+        let table = document.getElementById("agents");
+        table.innerHTML = `<tr>
+        <th>Agent ID</th>
+        <th>Agent Name</th>
+        <th>Agent Version</th>
+        <th>Agent OS</th>
+        <th>Agent IP</th>
+        <th>Agent Status</th>
+        <th>Agent Last Seen</th>
+        <th>Actions</th>
+      </tr>`;
+        data.agents.forEach((agent) => {
+          table.innerHTML += `
+            <tr>
+              <td>${agent.uuid}</td>
+              <td>${agent.name}</td>
+              <td>${agent.version}</td>
+              <td>${agent.os}</td>
+              <td>${agent.ip}</td>
+              <td>${agent.status}</td>
+              <td>${agent.last_seen}</td>
+              <td><button onclick="window.location.href='/dashboard?page=${page}&limit=${limit}&agent=${agent.uuid}'">View</button><td>
+            </tr>
+          `;
+        });
+      });
+  }
+
+  window.onload = () => {
+    loadAgents();
+  };
+
+  document.getElementById("refresh").addEventListener("click", () => {
+    loadAgents();
+  });
+
+  document.getElementById("first").addEventListener("click", () => {
+    page = 0;
+    loadAgents();
+  });
+
+  document.getElementById("prev").addEventListener("click", () => {
+    if (page > 0) {
+      page--;
+      loadAgents();
+    }
+  });
+
+  document.getElementById("next").addEventListener("click", () => {
+    if (page < total_pages) {
+      page++;
+      loadAgents();
+    }
+  });
+
+  document.getElementById("last").addEventListener("click", () => {
+    page = total_pages;
+    loadAgents();
+  });
+
+  document.getElementById("close").addEventListener("click", () => {
+    window.location.href = "/dashboard?page=" + page + "&limit=" + limit;
+  });
+
+  document.getElementById("refresh-agent").addEventListener("click", () => {
+    loadModal(params.get("agent"));
+  });
+
+  document.getElementById("delete").addEventListener("click", () => {
+    alert("This feature is not implemented yet!")
     });
 </script>
 
@@ -84,14 +213,72 @@
 
   <body>
     <p id="error"></p>
+    <dialog id="agent_info">
+      <h1>Agent Info</h1>
+      <p id="agent_uuid"></p>
+      <p id="agent_name"></p>
+      <p id="agent_version"></p>
+      <p id="agent_os"></p>
+      <p id="agent_ip"></p>
+      <p id="agent_status"></p>
+      <p id="agent_last_seen"></p>
+      <button id="close">Close</button>
+      <button id="refresh-agent">Refresh</button>
+      <button id="delete">Delete</button>
+    </dialog>
     <h1>Dashboard</h1>
     <h2>Hello, <a id="username">Loading...</a></h2>
     <button id="logout">Logout</button>
+    <table id="agents">
+      <tr>
+        <th>Agent ID</th>
+        <th>Agent Name</th>
+        <th>Agent Version</th>
+        <th>Agent OS</th>
+        <th>Agent IP</th>
+        <th>Agent Status</th>
+        <th>Agent Last Seen</th>
+        <th>Actions</th>
+      </tr>
+    </table>
+    <button id="first">First</button>
+    <button id="prev">Previous</button>
+    <button id="next">Next</button>
+    <button id="last">Last</button>
+    <button id="refresh">Refresh</button>
   </body>
 </html>
 
 <style>
   #error {
     color: red;
+  }
+
+  #agents {
+    font-family: Arial, Helvetica, sans-serif;
+    border-collapse: collapse;
+    width: 100%;
+  }
+
+  #agents td,
+  #agents th {
+    border: 1px solid #ddd;
+    padding: 8px;
+  }
+
+  #agents tr:nth-child(even) {
+    background-color: #f2f2f2;
+  }
+
+  #agents tr:hover {
+    background-color: #ddd;
+  }
+
+  #agents th {
+    padding-top: 12px;
+    padding-bottom: 12px;
+    text-align: left;
+    background-color: #04aa6d;
+    color: white;
   }
 </style>

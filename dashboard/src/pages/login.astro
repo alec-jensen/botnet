@@ -7,7 +7,8 @@
   import { API_URL } from "../consts.js";
 
   let token = getCookie("token");
-  let uuid = getCookie("uuid");
+
+  let uuid = token.split("::")[0];
 
   const params = new URLSearchParams(window.location.search);
   const username = params.get("username");
@@ -48,13 +49,12 @@
         .then((res) => {
           let expiryMS = res.auth_timeout * 1000;
           setCookie("token", res.auth_token, expiryMS);
-          setCookie("uuid", res.uuid, expiryMS);
           window.location.href = "/dashboard";
         });
       return;
     }
 
-    if (token == "" && uuid == "") {
+    if (token == "") {
       return;
     }
 
@@ -62,11 +62,8 @@
       method: "POST",
       headers: {
         "Content-Type": "application/json",
+        "authorization": `Bearer ${token}`,
       },
-      body: JSON.stringify({
-        token: token,
-        uuid: uuid,
-      }),
     })
       .then((res) => res.json())
       .then((res) => {
