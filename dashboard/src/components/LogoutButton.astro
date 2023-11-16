@@ -1,0 +1,28 @@
+---
+
+---
+
+<script>
+  import { API_URL } from "../consts";
+  import { getCookie, setCookie } from "../cookies";
+
+  function logout() {
+    fetch(API_URL + "/user/invalidate_token", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        token: getCookie("token"),
+        uuid: getCookie("uuid"),
+      }),
+    }).then((res) => {
+      if (res.ok) {
+        setCookie("token", "", 0);
+        window.location.href = "/";
+      }
+    });
+  }
+</script>
+
+<button on:click={logout}>Logout</button>

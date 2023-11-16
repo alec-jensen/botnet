@@ -31,6 +31,11 @@ class AgentCommand(BaseModel):
     command: str
     limitations: list[str] = None
 
+class MultiAgentCommand(BaseModel):
+    command: str
+    limitations: list[str] = None
+    uuids: list[str] = None
+
 
 class User(BaseModel):
     username: str
@@ -168,12 +173,25 @@ async def get_agent(request: Request, uuid: str):
     :return: The agent's information.
     """
 
-    agent = await db.agents.find_one(Schemas.AgentSchema(uuid=uuid))
+    agent: Schemas.AgentSchema = await db.agents.find_one(Schemas.AgentSchema(uuid=uuid))
 
     if agent is None:
         return responses.JSONResponse({"error": "Agent not found."}, status_code=404)
 
-    return responses.JSONResponse(agent.to_dict(), status_code=200)
+    agent.secret = None
+    agent = agent.to_dict()
+
+    conn = manager.get_connection(uuid)
+
+    if conn is not None:
+        agent["platform"] = conn.platform
+        agent["architecture"] = conn.architecture
+        agent["vm"] = conn.vm
+        agent["connected"] = True
+    else:
+        agent["connected"] = False
+
+    return responses.JSONResponse(agent, status_code=200)
 
 # TODO: this requires authentication as a user
 @app.get("/agents/{page}")
@@ -181,12 +199,78 @@ async def get_agents(request: Request, page: int, limit: int = 10):
     """
     Get a page of agents.
     :param page: The page number.
+    :param limit: The number of agents per page.
     :return: The agents.
     """
 
-    agents = await db.agents.find({}).skip(page * limit).limit(limit).to_list(length=limit)
+    if page < 0:
+        return responses.JSONResponse({"error": "Invalid page number."}, status_code=401)
+    if limit < 0:
+        return responses.JSONResponse({"error": "Invalid limit."}, status_code=401)
+    if limit > 100:
+        return responses.JSONResponse({"error": "Limit too high."}, status_code=401)
+
+    agents = (await db.agents.find({})).skip(page * limit).limit(limit)
+
+    agents = await agents.to_list(length=limit)
+
+    for agent in agents:
+        agent.pop("secret")
+        agent.pop("_id")
+
+        conn = manager.get_connection(agent.get("uuid"))
+
+        if conn is not None:
+            agent["platform"] = conn.platform
+            agent["architecture"] = conn.architecture
+            agent["vm"] = conn.vm
+            agent["connected"] = True
+        else:
+            agent["connected"] = False
 
     return responses.JSONResponse(agents, status_code=200)
+
+@app.post("/agents/command")
+async def send_command_to_agents(request: Request, command: MultiAgentCommand):
+    """
+    Send a command to multiple agents.
+    :param command: The command to send.
+    :return: The agent's information.
+    """
+
+    if command.limitations is not None:
+        for limitation in command.limitations:
+            if limitation not in allLimitations:
+                return responses.JSONResponse({"error": "Invalid limitation."}, status_code=401)
+            
+    errors = []
+    responses = {}
+
+    for uuid in command.uuids:
+        agent: Schemas.AgentSchema = await db.agents.find_one(Schemas.AgentSchema(uuid=uuid))
+
+        if agent is None:
+            errors.append({"uuid": uuid, "error": "Agent not found."})
+            continue
+
+        await manager.send_personal_message({"command": command.command, "limitations": command.limitations}, uuid)
+
+        conn = manager.get_connection(uuid)
+
+        try:
+            res = await conn.receive_json()
+            responses[uuid] = res
+        except fastapi.WebSocketDisconnect as e:
+            errors.append({"uuid": uuid, "error": "Agent not connected."})
+            continue
+
+    if len(errors) > 0:
+        if len(responses) > 0:
+            return responses.JSONResponse({"errors": errors, "responses": responses}, status_code=207)
+        else:
+            return responses.JSONResponse({"errors": errors}, status_code=500)
+
+    return responses.JSONResponse({"status": "200"}, status_code=200)
 
 # TODO: this requires authentication as either the agent or a user
 @app.post("/agent/{uuid}/update")
@@ -415,6 +499,23 @@ async def renew_token(request: Request, renew_user: UUIDAndToken):
     diff["$set"]["auth_timeout"] = auth_token_timeout
 
     await db.users.update_one(Schemas.UserSchema(uuid=renew_user.uuid), diff)
+
+    return responses.JSONResponse(user.to_dict(), status_code=200)
+
+@app.post("/user/invalidate_token")
+async def invalidate_token(request: Request, invalidate_user: UUIDAndToken):
+    user: Schemas.UserSchema = await db.users.find_one(Schemas.UserSchema(uuid=invalidate_user.uuid))
+
+    if user is None:
+        return responses.JSONResponse({"error": "User not found."}, status_code=404)
+    if not pwd_context.verify(invalidate_user.token, user.auth_token):
+        return responses.JSONResponse({"error": "Invalid token."}, status_code=401)
+    if user.auth_timeout > time.time():
+        return responses.JSONResponse({"error": "Token has expired."}, status_code=401)
+
+    diff = {"$set": {"auth_token": "", "auth_timeout": 0}}
+
+    await db.users.update_one(Schemas.UserSchema(uuid=invalidate_user.uuid), diff)
 
     return responses.JSONResponse(user.to_dict(), status_code=200)
 

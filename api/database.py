@@ -120,18 +120,19 @@ class Collection:
         return document if schema is None else schema.from_dict(document)
 
     """Find all documents in the collection. If a schema is provided, it will be converted to the schema."""
-    async def find(self, query: Schemas.BaseSchema | dict, schema: Schemas.BaseSchema | dict = None) -> list[dict] | list[Schemas.BaseSchema]:
+    async def find(self, query: Schemas.BaseSchema | dict, schema: Schemas.BaseSchema | dict = None) -> motor.motor_asyncio.AsyncIOMotorCursor | list[Schemas.BaseSchema]:
         if isinstance(query, Schemas.BaseSchema):
             schema = query.__class__
             query = query.to_dict()
 
-        documents = await self.collection.find(query)
+        documents: motor.motor_asyncio.AsyncIOMotorCursor = self.collection.find(query)
         if schema is None:
             schema = self.schema
 
         if schema is None:
             return documents
 
+        documents = await documents.to_list(length=None)
         return [schema.from_dict(document) for document in documents]
 
     """Update one document in the collection."""

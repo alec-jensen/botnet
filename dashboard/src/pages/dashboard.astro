@@ -1,5 +1,5 @@
 ---
-
+import LogoutButton from "../components/LogoutButton.astro";
 ---
 
 <script>
@@ -7,7 +7,15 @@
   import { getCookie } from "../cookies";
 
   fetch(API_URL + "/user/" + getCookie("uuid"))
-    .then((response) => response.json())
+    .then((response) => {
+      if (!response.ok) {
+        document.getElementById("error").innerHTML =
+          "Error: " + response.status + " " + response.statusText;
+        return;
+      }
+
+      return response.json()
+    })
     .then((data) => {
       document.getElementById("username").innerHTML = data.username;
     });
@@ -19,7 +27,15 @@
   </head>
 
   <body>
+    <p id="error"></p>
     <h1>Dashboard</h1>
     <h2>Hello, <a id="username">Loading...</a></h2>
+    <LogoutButton />
   </body>
 </html>
+
+<style>
+  #error {
+    color: red;
+  }
+</style>
