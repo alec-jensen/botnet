@@ -9,11 +9,22 @@
   let token = getCookie("token");
   let uuid = getCookie("uuid");
 
-  window.onload = () => {
-    const params = new URLSearchParams(window.location.search);
-    const username = params.get("username");
-    const password = params.get("password");
+  const params = new URLSearchParams(window.location.search);
+  const username = params.get("username");
+  const password = params.get("password");
 
+  let usernameInput = document.getElementById("username");
+  let passwordInput = document.getElementById("password");
+
+  if (username) {
+    usernameInput.value = username;
+  }
+
+  if (password) {
+    passwordInput.value = password;
+  }
+
+  window.onload = () => {
     if (username && password) {
       fetch(`${API_URL}/user/login`, {
         method: "POST",
@@ -29,6 +40,7 @@
           if (res.status != 200) {
             document.getElementById("error").innerHTML =
               "Username or password is incorrect";
+            return;
           }
 
           return res.json();
@@ -83,7 +95,7 @@
 </html>
 
 <style>
-  p #error {
+  #error {
     color: red;
   }
 </style>

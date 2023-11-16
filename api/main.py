@@ -1,6 +1,6 @@
 import fastapi
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi import responses, WebSocket, Request
+from fastapi import responses, WebSocket, Request, Header
 import uvicorn
 from uuid import uuid4
 import secrets
@@ -11,6 +11,7 @@ import asyncio
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
+from typing import Annotated
 
 from config import Config
 from database import Database
@@ -388,17 +389,31 @@ async def agent_ws(websocket: fastapi.WebSocket, uuid: str):
 
 
 @app.get("/user/{uuid}")
-async def get_user(request: Request, uuid: str):
+async def get_user(request: Request, authorization: Annotated[str | None, Header()], uuid: str):
     """
     Get a user's information.
     :param uuid: The user's UUID.
     :return: The user's information.
     """
 
+    authorization = authorization.replace("Bearer ", "")
+
     user = await db.users.find_one(Schemas.UserSchema(uuid=uuid))
 
     if user is None:
         return responses.JSONResponse({"error": "User not found."}, status_code=404)
+    
+    if authorization is None:
+        return responses.JSONResponse({"error": "No token provided."}, status_code=401)
+    
+    try:
+        if not pwd_context.verify(authorization, user.auth_token):
+            return responses.JSONResponse({"error": "Invalid token."}, status_code=401)
+    except:
+        return responses.JSONResponse({"error": "Invalid token."}, status_code=401)
+    
+    if user.auth_timeout < time.time():
+        return responses.JSONResponse({"error": "Token has expired."}, status_code=401)
 
     return responses.JSONResponse(user.to_dict(), status_code=200)
 
@@ -468,8 +483,13 @@ async def verify_token(request: Request, verify_user: UUIDAndToken):
 
     if user is None:
         return responses.JSONResponse({"error": "User not found."}, status_code=404)
-    if not pwd_context.verify(verify_user.token, user.auth_token):
+    
+    try:
+        if not pwd_context.verify(verify_user.token, user.auth_token):
+            return responses.JSONResponse({"error": "Invalid token."}, status_code=401)
+    except:
         return responses.JSONResponse({"error": "Invalid token."}, status_code=401)
+    
     if user.auth_timeout < time.time():
         return responses.JSONResponse({"error": "Token has expired."}, status_code=401)
     
@@ -510,7 +530,7 @@ async def invalidate_token(request: Request, invalidate_user: UUIDAndToken):
         return responses.JSONResponse({"error": "User not found."}, status_code=404)
     if not pwd_context.verify(invalidate_user.token, user.auth_token):
         return responses.JSONResponse({"error": "Invalid token."}, status_code=401)
-    if user.auth_timeout > time.time():
+    if user.auth_timeout < time.time():
         return responses.JSONResponse({"error": "Token has expired."}, status_code=401)
 
     diff = {"$set": {"auth_token": "", "auth_timeout": 0}}

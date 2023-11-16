@@ -9,10 +9,10 @@
   let token = getCookie("token");
   let uuid = getCookie("uuid");
 
-  if (token == "") {
+  if (token == "" || token == undefined) {
     window.location.href = "/login";
   }
-  if (uuid == "") {
+  if (uuid == "" || uuid == undefined) {
     window.location.href = "/login";
   }
 
@@ -43,4 +43,5 @@
   </body>
 </html>
 
-<style></style>
+<style>
+</style>

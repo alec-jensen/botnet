@@ -1,12 +1,54 @@
 ---
-import LogoutButton from "../components/LogoutButton.astro";
 ---
 
 <script>
   import { API_URL } from "../consts";
-  import { getCookie } from "../cookies";
+  import { getCookie, setCookie } from "../cookies";
 
-  fetch(API_URL + "/user/" + getCookie("uuid"))
+  fetch(`${API_URL}/user/verify`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      token: getCookie("token"),
+      uuid: getCookie("uuid"),
+    }),
+  })
+    .then((res) => {
+      if (res.status != 200) {
+        window.location.href = "/login";
+      }
+    });
+
+  document.getElementById("logout").addEventListener("click", () => {
+    fetch(API_URL + "/user/invalidate_token", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        token: getCookie("token"),
+        uuid: getCookie("uuid"),
+      }),
+    }).then((res) => {
+      if (res.ok) {
+        setCookie("token", "", 0);
+        window.location.href = "/";
+      }
+    });
+  });
+
+  let page = 0;
+  let amount = 10;
+
+  fetch(API_URL + "/user/" + getCookie("uuid"), {
+    method: "GET",
+    headers: {
+      "Content-Type": "application/json",
+      "authorization": "Bearer " + getCookie("token"),
+    },
+  })
     .then((response) => {
       if (!response.ok) {
         document.getElementById("error").innerHTML =
@@ -14,10 +56,24 @@ import LogoutButton from "../components/LogoutButton.astro";
         return;
       }
 
-      return response.json()
+      return response.json();
     })
     .then((data) => {
       document.getElementById("username").innerHTML = data.username;
+    });
+
+  fetch(API_URL + "/agents/" + page + "?amount=" + amount)
+    .then((response) => {
+      if (!response.ok) {
+        document.getElementById("error").innerHTML =
+          "Error: " + response.status + " " + response.statusText;
+        return;
+      }
+
+      return response.json();
+    })
+    .then((data) => {
+      console.log(data);
     });
 </script>
 
@@ -30,7 +86,7 @@ import LogoutButton from "../components/LogoutButton.astro";
     <p id="error"></p>
     <h1>Dashboard</h1>
     <h2>Hello, <a id="username">Loading...</a></h2>
-    <LogoutButton />
+    <button id="logout">Logout</button>
   </body>
 </html>
 
