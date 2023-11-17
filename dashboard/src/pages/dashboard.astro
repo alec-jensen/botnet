@@ -38,7 +38,7 @@
   });
 
   let page = 0;
-  let limit = 2;
+  let limit = 10;
   let total_pages;
 
   let params = new URLSearchParams(window.location.search);
@@ -206,6 +206,8 @@
 
   window.onload = () => {
     loadAgents();
+
+    document.getElementById("limit").value = limit;
   };
 
   document.getElementById("refresh").addEventListener("click", () => {
@@ -263,6 +265,17 @@
   document.getElementById("info_edit").addEventListener("click", () => {
     window.location.href = "/dashboard?page=" + page + "&limit=" + limit + "&edit=" + params.get("agent");
   });
+
+  document.getElementById("limit").addEventListener("change", () => {
+    limit = document.getElementById("limit").value;
+    page = 0;
+    loadAgents();
+
+    // change url without reloading page
+    let url = new URL(window.location.href);
+    url.searchParams.set("limit", String(limit));
+    window.history.pushState({}, "", url);
+  });
 </script>
 
 <html>
@@ -315,6 +328,13 @@
     <button id="next">Next</button>
     <button id="last">Last</button>
     <button id="refresh">Refresh</button>
+    <select id="limit">
+      <option value="5">5</option>
+      <option value="10">10</option>
+      <option value="25">25</option>
+      <option value="50">50</option>
+      <option value="100">100</option>
+    </select>
   </body>
 </html>
 
