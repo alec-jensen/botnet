@@ -14,22 +14,23 @@ def debug(*args):
 
 
 """{
-  "uuid": "27d21355-f112-4b5f-b2b2-d47307d5542e",
-  "secret": "$2b$12$lXZNLCNtMmVueyFnuuW9b.zu/54JowUSgiUhvAeHR8caa8rb45Y8S",
-  "name": "agent1",
-  "description": "yomama",
+  "uuid": "aee53005-c077-4f17-9566-fe699ff6a2e5",
+  "secret": "$2b$12$/Pkioh0dFzRPmbD4LBMlg.xMwj2aGgpnHk0ntFRkRmNLC5plfSCnm",
+  "name": "test_agent",
+  "description": "agent for testing",
   "version": 0,
-  "created_at": 1699655826,
-  "raw_secret": "S1AeiwRMp6JIEOOdGNiyhn1J9mqgYQED5X8YaTRlheI"
+  "created_at": 1700229538,
+  "last_seen": 1700229538,
+  "raw_secret": "t8bGgAyPl8Pw7I6AJNopFKCl82TGo_M7bZZ1uouG1r8"
 }"""
 
 
-UUID = "27d21355-f112-4b5f-b2b2-d47307d5542e"
+UUID = "aee53005-c077-4f17-9566-fe699ff6a2e5"
 
 WS_URL = f"ws://127.0.0.1:8000/agent/{UUID}/ws"
 
 # deepcode ignore HardcodedNonCryptoSecret: this is purely for testing
-SECRET = "S1AeiwRMp6JIEOOdGNiyhn1J9mqgYQED5X8YaTRlheI"
+SECRET = "t8bGgAyPl8Pw7I6AJNopFKCl82TGo_M7bZZ1uouG1r8"
 
 # TODO: gain root/administrator access
 

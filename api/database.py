@@ -118,6 +118,9 @@ class Collection:
             query = query.to_dict()
 
         document = await self.collection.find_one(query)
+        if document is None:
+            return None
+        
         if schema is None:
             schema = self.schema
 
@@ -174,12 +177,12 @@ class Database:
         self.client: motor.motor_asyncio.AsyncIOMotorClient = motor.motor_asyncio.AsyncIOMotorClient(
             dbstring)
 
-        self.database: motor.motor_asyncio.AsyncIOMotorDatabase = self.client.data
+        self._database: motor.motor_asyncio.AsyncIOMotorDatabase = self.client.data
 
     @property
     def agents(self) -> Collection:
-        return Collection(self.database.agents)
+        return Collection(self._database.agents)
 
     @property
     def users(self) -> Collection:
-        return Collection(self.database.users)
+        return Collection(self._database.users)

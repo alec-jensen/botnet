@@ -132,7 +132,7 @@ app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
-
+# TODO: make this a post request
 @app.get("/agent/register")
 @limiter.limit("5/hour")
 async def register_agent(request: Request, version: int, name: str = None, description: str = None):
@@ -306,7 +306,7 @@ async def send_command_to_agents(request: Request, authorization: Annotated[str 
 
 # TODO: this requires authentication as either the agent or a user
 @app.post("/agent/{uuid}/update")
-async def update_agent(request: Request, uuid: str, update: UpdateAgent):
+async def update_agent(request: Request, authorization: Annotated[str | None, Header()], uuid: str, update: UpdateAgent):
     """
     Update an agent's information.
     :param uuid: The agent's UUID.
@@ -314,7 +314,45 @@ async def update_agent(request: Request, uuid: str, update: UpdateAgent):
     :return: The agent's information.
     """
 
-    agent = await db.agents.find_one(Schemas.AgentSchema(uuid=uuid))
+    if authorization is None:
+        return responses.JSONResponse({"error": "No token provided."}, status_code=401)
+    
+    try:
+        authorization = authorization.replace("Bearer ", "")
+        auth_uuid, authorization = authorization.split("::")
+    except:
+        return responses.JSONResponse({"error": "Invalid token."}, status_code=401)
+    
+    # Check if uuid is a user or agent
+
+    user: Schemas.UserSchema = await db.users.find_one(Schemas.UserSchema(uuid=auth_uuid))
+
+    if user is not None:
+        try:
+            if not pwd_context.verify(authorization, user.auth_token):
+                return responses.JSONResponse({"error": "Invalid token."}, status_code=401)
+        except:
+            return responses.JSONResponse({"error": "Invalid token."}, status_code=401)
+        
+        if user.auth_timeout < time.time():
+            return responses.JSONResponse({"error": "Token has expired."}, status_code=401)
+        
+        if not user.is_allowed:
+            return responses.JSONResponse({"error": "User not allowed."}, status_code=401)
+        
+    agent: Schemas.AgentSchema = await db.agents.find_one(Schemas.AgentSchema(uuid=auth_uuid))
+
+    if agent is not None:
+        try:
+            if not pwd_context.verify(authorization, agent.secret):
+                return responses.JSONResponse({"error": "Invalid token."}, status_code=401)
+        except:
+            return responses.JSONResponse({"error": "Invalid token."}, status_code=401)
+        
+    if agent is None and user is None:
+        return responses.JSONResponse({"error": "User or agent not found."}, status_code=404)
+
+    agent: Schemas.AgentSchema = await db.agents.find_one(Schemas.AgentSchema(uuid=uuid))
 
     diff = {"$set": {}}
 
@@ -330,7 +368,9 @@ async def update_agent(request: Request, uuid: str, update: UpdateAgent):
         diff["$set"]["version"] = update.version
         agent.version = update.version
 
-    await db.agents.update_one(Schemas.AgentSchema(uuid=uuid), diff)
+    #await db.agents.update_one(Schemas.AgentSchema(uuid=uuid).to_dict(), diff)
+
+    await db._database.agents.update_one(Schemas.AgentSchema(uuid=uuid).to_dict(), diff)
 
     return responses.JSONResponse(agent.to_dict(), status_code=200)
 

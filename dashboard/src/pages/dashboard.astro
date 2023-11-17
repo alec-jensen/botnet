@@ -55,6 +55,10 @@
     loadModal(params.get("agent"));
   }
 
+  if (params.has("edit")) {
+    document.getElementById("edit_agent").showModal();
+  }
+
   fetch(API_URL + "/user/" + uuid, {
     method: "GET",
     headers: {
@@ -91,6 +95,9 @@
           document.getElementById(
             "agent_name"
           ).innerHTML = `Agent Name: ${data.name}`;
+          document.getElementById(
+            "agent_description"
+          ).innerHTML = `Agent Description: ${data.description}`;
           document.getElementById(
             "agent_version"
           ).innerHTML = `Agent Version: ${data.version}`;
@@ -153,12 +160,48 @@
               <td>${agent.os}</td>
               <td>${agent.ip}</td>
               <td>${agent.status}</td>
-              <td>${agent.last_seen}</td>
-              <td><button onclick="window.location.href='/dashboard?page=${page}&limit=${limit}&agent=${agent.uuid}'">View</button><td>
+              <td>${new Date(agent.last_seen)}</td>
+              <td><button onclick="window.location.href='/dashboard?page=${page}&limit=${limit}&agent=${agent.uuid}'">View</button>
+                <button onclick="window.location.href='/dashboard?page=${page}&limit=${limit}&edit=${agent.uuid}'">Edit</button>
             </tr>
           `;
         });
       });
+  }
+
+  function editAgent(name, description, version) {
+      let data = {
+          name: name,
+          description: description,
+          version: version
+      }
+
+      if (name == "") {
+          delete data.name;
+      }
+
+      if (description == "") {
+          delete data.description;
+      }
+
+      if (version == "") {
+          delete data.version;
+      }
+
+    let uuid = params.get("edit");
+
+    fetch(`${API_URL}/agent/${uuid}/update`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(data),
+    }).then((res) => {
+      if (res.ok) {
+        window.location.href = "/dashboard?page=" + page + "&limit=" + limit + "&agent=" + uuid;
+      }
+    });
   }
 
   window.onload = () => {
@@ -204,6 +247,22 @@
   document.getElementById("delete").addEventListener("click", () => {
     alert("This feature is not implemented yet!")
     });
+
+  document.getElementById("edit_cancel").addEventListener("click", () => {
+    document.getElementById("edit_agent").close();
+  });
+
+  document.getElementById("edit_save").addEventListener("click", () => {
+    let name = document.getElementById("edit_agent_name").value;
+    let description = document.getElementById("edit_agent_description").value;
+    let version = document.getElementById("edit_agent_version").value;
+    
+    editAgent(name, description, version);
+  });
+
+  document.getElementById("info_edit").addEventListener("click", () => {
+    window.location.href = "/dashboard?page=" + page + "&limit=" + limit + "&edit=" + params.get("agent");
+  });
 </script>
 
 <html>
@@ -217,6 +276,7 @@
       <h1>Agent Info</h1>
       <p id="agent_uuid"></p>
       <p id="agent_name"></p>
+      <p id="agent_description"></p>
       <p id="agent_version"></p>
       <p id="agent_os"></p>
       <p id="agent_ip"></p>
@@ -224,7 +284,16 @@
       <p id="agent_last_seen"></p>
       <button id="close">Close</button>
       <button id="refresh-agent">Refresh</button>
+      <button id="info_edit">Edit</button>
       <button id="delete">Delete</button>
+    </dialog>
+    <dialog id="edit_agent">
+      <h1>Edit Agent</h1>
+      <input id="edit_agent_name" placeholder="Agent Name" />
+      <input id="edit_agent_description" placeholder="Agent Description" />
+      <input id="edit_agent_version" placeholder="Agent Version" />
+      <button id="edit_cancel">Cancel</button>
+      <button id="edit_save">Save</button>
     </dialog>
     <h1>Dashboard</h1>
     <h2>Hello, <a id="username">Loading...</a></h2>
