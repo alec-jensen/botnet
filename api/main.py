@@ -272,13 +272,42 @@ async def send_command_to_agents(request: Request, authorization: Annotated[str 
     :return: The agent's information.
     """
 
+    if authorization is None:
+        return responses.JSONResponse({"error": "No token provided."}, status_code=401)
+    
+    try:
+        authorization = authorization.replace("Bearer ", "")
+        uuid, authorization = authorization.split("::")
+    except:
+        return responses.JSONResponse({"error": "Invalid token."}, status_code=401)
+    
+    user: Schemas.UserSchema = await db.users.find_one(Schemas.UserSchema(uuid=uuid))
+
+    if user is None:
+        return responses.JSONResponse({"error": "User not found."}, status_code=404)
+    
+    try:
+        if not pwd_context.verify(authorization, user.auth_token):
+            return responses.JSONResponse({"error": "Invalid token."}, status_code=401)
+    except:
+        return responses.JSONResponse({"error": "Invalid token."}, status_code=401)
+    
+    if user.auth_timeout < time.time():
+        return responses.JSONResponse({"error": "Token has expired."}, status_code=401)
+
     if command.limitations is not None:
         for limitation in command.limitations:
             if limitation not in allLimitations:
                 return responses.JSONResponse({"error": "Invalid limitation."}, status_code=401)
             
     errors = []
-    responses = {}
+    agent_responses = {}
+
+    if command.uuids is None:
+        command.uuids = []
+
+        for conn in manager.active_connections:
+            command.uuids.append(conn.uuid)
 
     for uuid in command.uuids:
         agent: Schemas.AgentSchema = await db.agents.find_one(Schemas.AgentSchema(uuid=uuid))
@@ -293,14 +322,14 @@ async def send_command_to_agents(request: Request, authorization: Annotated[str 
 
         try:
             res = await conn.receive_json()
-            responses[uuid] = res
+            agent_responses[uuid] = res
         except fastapi.WebSocketDisconnect as e:
             errors.append({"uuid": uuid, "error": "Agent not connected."})
             continue
 
     if len(errors) > 0:
-        if len(responses) > 0:
-            return responses.JSONResponse({"errors": errors, "responses": responses}, status_code=207)
+        if len(agent_responses) > 0:
+            return responses.JSONResponse({"errors": errors, "responses": agent_responses}, status_code=207)
         else:
             return responses.JSONResponse({"errors": errors}, status_code=500)
 
@@ -378,7 +407,7 @@ async def update_agent(request: Request, authorization: Annotated[str | None, He
 
 # TODO: this requires authentication as a user
 @app.post("/agent/{uuid}/command")
-async def send_command(request: Request, authorization: Annotated[str | None, Header()], command: AgentCommand):
+async def send_command(request: Request, authorization: Annotated[str | None, Header()], uuid: str, command: AgentCommand):
     """
     Send a command to an agent.
     :param uuid: The agent's UUID.
@@ -386,33 +415,28 @@ async def send_command(request: Request, authorization: Annotated[str | None, He
     :return: The agent's information.
     """
 
-    agent: Schemas.AgentSchema = await db.agents.find_one(Schemas.AgentSchema(uuid=uuid))
-
-    if agent is None:
-        return responses.JSONResponse({"error": "Agent not found."}, status_code=404)
-    
     if authorization is None:
         return responses.JSONResponse({"error": "No token provided."}, status_code=401)
     
     try:
         authorization = authorization.replace("Bearer ", "")
-        uuid, authorization = authorization.split("::")
+        auth_uuid, authorization = authorization.split("::")
     except:
         return responses.JSONResponse({"error": "Invalid token."}, status_code=401)
     
+    user: Schemas.UserSchema = await db.users.find_one(Schemas.UserSchema(uuid=auth_uuid))
+
+    if user is None:
+        return responses.JSONResponse({"error": "User not found."}, status_code=404)
+    
     try:
-        if not pwd_context.verify(authorization, agent.secret):
+        if not pwd_context.verify(authorization, user.auth_token):
             return responses.JSONResponse({"error": "Invalid token."}, status_code=401)
     except:
         return responses.JSONResponse({"error": "Invalid token."}, status_code=401)
     
-    if agent.auth_timeout < time.time():
+    if user.auth_timeout < time.time():
         return responses.JSONResponse({"error": "Token has expired."}, status_code=401)
-
-    if command.limitations is not None:
-        for limitation in command.limitations:
-            if limitation not in allLimitations:
-                return responses.JSONResponse({"error": "Invalid limitation."}, status_code=401)
 
     await manager.send_personal_message({"command": command.command, "limitations": command.limitations}, uuid)
 

@@ -59,6 +59,10 @@
     document.getElementById("edit_agent").showModal();
   }
 
+  if (params.has("command")) {
+    document.getElementById("agent_command_modal").showModal();
+  }
+
   fetch(API_URL + "/user/" + uuid, {
     method: "GET",
     headers: {
@@ -92,9 +96,12 @@
           document.getElementById(
             "agent_uuid"
           ).innerHTML = `Agent UUID: ${data.uuid}`;
-          document.getElementById("agent_name").innerHTML = data.connected
-            ? `Agent Name: ${data.name}`
-            : `Agent Name: ${data.name} <span class="disconnected">(Disconnected)</span>`;
+          document.getElementById("agent_connected").innerHTML = data.connected
+            ? `<span class="material-symbols-outlined" style="color: green;">wifi</span>`
+            : `<span class="material-symbols-outlined" style="color: red;">wifi_off</span>`;
+          document.getElementById(
+            "agent_name"
+          ).innerHTML = `Agent Name: ${data.name}`;
           document.getElementById(
             "agent_description"
           ).innerHTML = `Agent Description: ${data.description}`;
@@ -142,6 +149,7 @@
 
         let table = document.getElementById("agents");
         table.innerHTML = `<tr>
+        <th>Status</th>
         <th>Agent ID</th>
         <th>Agent Name</th>
         <th>Agent Version</th>
@@ -153,9 +161,12 @@
         data.agents.forEach((agent) => {
           table.innerHTML += `
             <tr>
-              <td class=${agent.connected ? "connected" : "disconnected"}>${
-                agent.uuid
+              <td class="connection ${agent.connected ? "connected" : "disconnected"}">${
+                agent.connected
+                  ? `<span class="material-symbols-outlined">wifi</span>`
+                  : `<span class="material-symbols-outlined">wifi_off</span>`
               }</td>
+              <td>${agent.uuid}</td>
               <td>${agent.name}</td>
               <td>${agent.version}</td>
               <td>${agent.platform}</td>
@@ -167,6 +178,9 @@
                 <button onclick="window.location.href='/dashboard?page=${page}&limit=${limit}&edit=${
                   agent.uuid
                 }'">Edit</button>
+                <button onclick="window.location.href='/dashboard?page=${page}&limit=${limit}&command=${
+                agent.uuid
+              }'">Run command</button></td>
             </tr>
           `;
         });
@@ -205,6 +219,44 @@
       if (res.ok) {
         window.location.href =
           "/dashboard?page=" + page + "&limit=" + limit + "&agent=" + uuid;
+      }
+    });
+  }
+
+  function agentCommand() {
+    fetch(`${API_URL}/agent/${params.get("command")}/command`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        command: document.getElementById("agent_command").value,
+      }),
+    }).then((res) => {
+      if (res.ok) {
+        res.json().then((data) => {
+          document.getElementById("agent_command_output").innerHTML = data.output;
+        });
+      }
+    });
+  }
+
+  function globalCommand() {
+    fetch(`${API_URL}/agents/command`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        command: document.getElementById("global_command").value,
+      }),
+    }).then((res) => {
+      if (res.ok) {
+        res.json().then((data) => {
+          document.getElementById("global_command_output").innerHTML = data.status;
+        });
       }
     });
   }
@@ -302,11 +354,34 @@
     url.searchParams.set("limit", String(limit));
     window.history.pushState({}, "", url);
   });
+
+  document.getElementById("agent_command_cancel").addEventListener("click", () => {
+    window.location.href = "/dashboard?page=" + page + "&limit=" + limit;
+  });
+
+  document.getElementById("agent_command_send").addEventListener("click", () => {
+    agentCommand();
+  });
+
+  document.getElementById("global_command_cancel").addEventListener("click", () => {
+    document.getElementById("global_command_modal").close();
+  });
+
+  document.getElementById("global_command_send").addEventListener("click", () => {
+    document.getElementById("global_command_output").innerHTML = "Running...";
+    globalCommand();
+  });
 </script>
 
 <html>
   <head>
     <title>Dashboard</title>
+
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200"
+    />
+    <link rel="stylesheet" href="/dashboard.css" />
   </head>
 
   <body>
@@ -314,6 +389,7 @@
     <dialog id="agent_info">
       <h1>Agent Info</h1>
       <p id="agent_uuid"></p>
+      <p id="agent_connected"></p>
       <p id="agent_name"></p>
       <p id="agent_description"></p>
       <p id="agent_version"></p>
@@ -334,11 +410,26 @@
       <button id="edit_cancel">Cancel</button>
       <button id="edit_save">Save</button>
     </dialog>
+    <dialog id="agent_command_modal">
+      <h1>Agent Command</h1>
+      <textarea id="agent_command"></textarea>
+      <p id="agent_command_output"></p>
+      <button id="agent_command_cancel">Cancel</button>
+      <button id="agent_command_send">Send</button>
+    </dialog>
+    <dialog id="global_command_modal">
+      <h1>Global Command</h1>
+      <textarea id="global_command"></textarea>
+      <p class="code" id="global_command_output"></p>
+      <button id="global_command_cancel">Cancel</button>
+      <button id="global_command_send">Send</button>
+    </dialog>
     <h1>Dashboard</h1>
     <h2>Hello, <a id="username">Loading...</a></h2>
     <button id="logout">Logout</button>
     <table id="agents">
       <tr>
+        <th>Status</th>
         <th>Agent ID</th>
         <th>Agent Name</th>
         <th>Agent Version</th>
@@ -360,47 +451,7 @@
       <option value="50">50</option>
       <option value="100">100</option>
     </select>
+    <br>
+    <button onclick="document.getElementById('global_command_modal').showModal()">Run global command</button>
   </body>
 </html>
-
-<style>
-  #error {
-    color: red;
-  }
-
-  #agents {
-    font-family: Arial, Helvetica, sans-serif;
-    border-collapse: collapse;
-    width: 100%;
-  }
-
-  #agents td,
-  #agents th {
-    border: 1px solid #ddd;
-    padding: 8px;
-  }
-
-  #agents tr:nth-child(even) {
-    background-color: #f2f2f2;
-  }
-
-  #agents tr:hover {
-    background-color: #ddd;
-  }
-
-  #agents th {
-    padding-top: 12px;
-    padding-bottom: 12px;
-    text-align: left;
-    background-color: #04aa6d;
-    color: white;
-  }
-
-  .connected {
-    background: green;
-  }
-
-  .disconnected {
-    background: red;
-  }
-</style>
