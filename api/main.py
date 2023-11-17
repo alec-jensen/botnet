@@ -185,6 +185,7 @@ async def get_agent(request: Request, uuid: str):
     conn = manager.get_connection(uuid)
 
     if conn is not None:
+        agent["ip"] = conn.websocket.client.host
         agent["platform"] = conn.platform
         agent["architecture"] = conn.architecture
         agent["vm"] = conn.vm
@@ -245,6 +246,7 @@ async def get_agents(request: Request, authorization: Annotated[str | None, Head
         conn = manager.get_connection(agent.get("uuid"))
 
         if conn is not None:
+            agent["ip"] = conn.websocket.client.host
             agent["platform"] = conn.platform
             agent["architecture"] = conn.architecture
             agent["vm"] = conn.vm

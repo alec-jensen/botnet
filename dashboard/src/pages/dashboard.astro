@@ -94,7 +94,7 @@
           ).innerHTML = `Agent UUID: ${data.uuid}`;
           document.getElementById(
             "agent_name"
-          ).innerHTML = `Agent Name: ${data.name}`;
+          ).innerHTML = data.connected ? `Agent Name: ${data.name}` : `Agent Name: ${data.name} <span class="disconnected">(Disconnected)</span>`;
           document.getElementById(
             "agent_description"
           ).innerHTML = `Agent Description: ${data.description}`;
@@ -103,13 +103,13 @@
           ).innerHTML = `Agent Version: ${data.version}`;
           document.getElementById(
             "agent_os"
-          ).innerHTML = `Agent OS: ${data.os}`;
+          ).innerHTML = `Agent OS: ${data.platform}`;
+          document.getElementById(
+            "agent_architecture"
+          ).innerHTML = `Agent Architecture: ${data.architecture}`;
           document.getElementById(
             "agent_ip"
           ).innerHTML = `Agent IP: ${data.ip}`;
-          document.getElementById(
-            "agent_status"
-          ).innerHTML = `Agent Status: ${data.status}`;
           document.getElementById(
             "agent_last_seen"
           ).innerHTML = `Agent Last Seen: ${data.last_seen}`;
@@ -147,19 +147,17 @@
         <th>Agent Version</th>
         <th>Agent OS</th>
         <th>Agent IP</th>
-        <th>Agent Status</th>
         <th>Agent Last Seen</th>
         <th>Actions</th>
       </tr>`;
         data.agents.forEach((agent) => {
           table.innerHTML += `
             <tr>
-              <td>${agent.uuid}</td>
+              <td class=${agent.connected ? "connected" : "disconnected"}>${agent.uuid}</td>
               <td>${agent.name}</td>
               <td>${agent.version}</td>
-              <td>${agent.os}</td>
+              <td>${agent.platform}</td>
               <td>${agent.ip}</td>
-              <td>${agent.status}</td>
               <td>${new Date(agent.last_seen)}</td>
               <td><button onclick="window.location.href='/dashboard?page=${page}&limit=${limit}&agent=${agent.uuid}'">View</button>
                 <button onclick="window.location.href='/dashboard?page=${page}&limit=${limit}&edit=${agent.uuid}'">Edit</button>
@@ -292,8 +290,8 @@
       <p id="agent_description"></p>
       <p id="agent_version"></p>
       <p id="agent_os"></p>
+      <p id="agent_architecture"></p>
       <p id="agent_ip"></p>
-      <p id="agent_status"></p>
       <p id="agent_last_seen"></p>
       <button id="close">Close</button>
       <button id="refresh-agent">Refresh</button>
@@ -318,7 +316,6 @@
         <th>Agent Version</th>
         <th>Agent OS</th>
         <th>Agent IP</th>
-        <th>Agent Status</th>
         <th>Agent Last Seen</th>
         <th>Actions</th>
       </tr>
@@ -369,5 +366,13 @@
     text-align: left;
     background-color: #04aa6d;
     color: white;
+  }
+
+  .connected {
+    background: green;
+  }
+
+  .disconnected {
+    background: red;
   }
 </style>
