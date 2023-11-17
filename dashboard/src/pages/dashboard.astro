@@ -92,9 +92,9 @@
           document.getElementById(
             "agent_uuid"
           ).innerHTML = `Agent UUID: ${data.uuid}`;
-          document.getElementById(
-            "agent_name"
-          ).innerHTML = data.connected ? `Agent Name: ${data.name}` : `Agent Name: ${data.name} <span class="disconnected">(Disconnected)</span>`;
+          document.getElementById("agent_name").innerHTML = data.connected
+            ? `Agent Name: ${data.name}`
+            : `Agent Name: ${data.name} <span class="disconnected">(Disconnected)</span>`;
           document.getElementById(
             "agent_description"
           ).innerHTML = `Agent Description: ${data.description}`;
@@ -112,7 +112,7 @@
           ).innerHTML = `Agent IP: ${data.ip}`;
           document.getElementById(
             "agent_last_seen"
-          ).innerHTML = `Agent Last Seen: ${data.last_seen}`;
+          ).innerHTML = `Agent Last Seen: ${new Date(data.last_seen * 1000)}`;
           document.getElementById("agent_info").close();
           document.getElementById("agent_info").showModal();
         });
@@ -153,14 +153,20 @@
         data.agents.forEach((agent) => {
           table.innerHTML += `
             <tr>
-              <td class=${agent.connected ? "connected" : "disconnected"}>${agent.uuid}</td>
+              <td class=${agent.connected ? "connected" : "disconnected"}>${
+                agent.uuid
+              }</td>
               <td>${agent.name}</td>
               <td>${agent.version}</td>
               <td>${agent.platform}</td>
               <td>${agent.ip}</td>
-              <td>${new Date(agent.last_seen)}</td>
-              <td><button onclick="window.location.href='/dashboard?page=${page}&limit=${limit}&agent=${agent.uuid}'">View</button>
-                <button onclick="window.location.href='/dashboard?page=${page}&limit=${limit}&edit=${agent.uuid}'">Edit</button>
+              <td>${new Date(agent.last_seen * 1000)}</td>
+              <td><button onclick="window.location.href='/dashboard?page=${page}&limit=${limit}&agent=${
+                agent.uuid
+              }'">View</button>
+                <button onclick="window.location.href='/dashboard?page=${page}&limit=${limit}&edit=${
+                  agent.uuid
+                }'">Edit</button>
             </tr>
           `;
         });
@@ -168,23 +174,23 @@
   }
 
   function editAgent(name, description, version) {
-      let data = {
-          name: name,
-          description: description,
-          version: version
-      }
+    let data = {
+      name: name,
+      description: description,
+      version: version,
+    };
 
-      if (name == "") {
-          delete data.name;
-      }
+    if (name == "") {
+      delete data.name;
+    }
 
-      if (description == "") {
-          delete data.description;
-      }
+    if (description == "") {
+      delete data.description;
+    }
 
-      if (version == "") {
-          delete data.version;
-      }
+    if (version == "") {
+      delete data.version;
+    }
 
     let uuid = params.get("edit");
 
@@ -197,7 +203,8 @@
       body: JSON.stringify(data),
     }).then((res) => {
       if (res.ok) {
-        window.location.href = "/dashboard?page=" + page + "&limit=" + limit + "&agent=" + uuid;
+        window.location.href =
+          "/dashboard?page=" + page + "&limit=" + limit + "&agent=" + uuid;
       }
     });
   }
@@ -215,12 +222,20 @@
   document.getElementById("first").addEventListener("click", () => {
     page = 0;
     loadAgents();
+
+    let url = new URL(window.location.href);
+    url.searchParams.set("page", String(page));
+    window.history.pushState({}, "", url);
   });
 
   document.getElementById("prev").addEventListener("click", () => {
     if (page > 0) {
       page--;
       loadAgents();
+
+      let url = new URL(window.location.href);
+      url.searchParams.set("page", String(page));
+      window.history.pushState({}, "", url);
     }
   });
 
@@ -228,12 +243,20 @@
     if (page < total_pages) {
       page++;
       loadAgents();
+
+      let url = new URL(window.location.href);
+      url.searchParams.set("page", String(page));
+      window.history.pushState({}, "", url);
     }
   });
 
   document.getElementById("last").addEventListener("click", () => {
     page = total_pages;
     loadAgents();
+
+    let url = new URL(window.location.href);
+    url.searchParams.set("page", String(page));
+    window.history.pushState({}, "", url);
   });
 
   document.getElementById("close").addEventListener("click", () => {
@@ -245,8 +268,8 @@
   });
 
   document.getElementById("delete").addEventListener("click", () => {
-    alert("This feature is not implemented yet!")
-    });
+    alert("This feature is not implemented yet!");
+  });
 
   document.getElementById("edit_cancel").addEventListener("click", () => {
     document.getElementById("edit_agent").close();
@@ -256,12 +279,18 @@
     let name = document.getElementById("edit_agent_name").value;
     let description = document.getElementById("edit_agent_description").value;
     let version = document.getElementById("edit_agent_version").value;
-    
+
     editAgent(name, description, version);
   });
 
   document.getElementById("info_edit").addEventListener("click", () => {
-    window.location.href = "/dashboard?page=" + page + "&limit=" + limit + "&edit=" + params.get("agent");
+    window.location.href =
+      "/dashboard?page=" +
+      page +
+      "&limit=" +
+      limit +
+      "&edit=" +
+      params.get("agent");
   });
 
   document.getElementById("limit").addEventListener("change", () => {
@@ -269,7 +298,6 @@
     page = 0;
     loadAgents();
 
-    // change url without reloading page
     let url = new URL(window.location.href);
     url.searchParams.set("limit", String(limit));
     window.history.pushState({}, "", url);
