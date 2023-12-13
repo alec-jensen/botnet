@@ -1,0 +1,20 @@
+version: '3'
+
+services:
+  dashboard:
+    depends_on:
+      - api
+    image: botnet-dashboard
+    ports:
+      - "80:4321"
+    container_name: botnet-dashboard
+    restart: unless-stopped
+
+  api:
+    image: botnet-api
+    ports:
+      - "8000:8000"
+    container_name: botnet-api
+    restart: unless-stopped
+    volumes:
+      - ./api/config.json:/app/config.json
