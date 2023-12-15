@@ -36,4 +36,4 @@ else
     disown
 fi
 
-# rm "$CURRENT_PATH/installer.sh"
+rm -r "$CURRENT_PATH"
