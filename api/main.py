@@ -1,6 +1,7 @@
 import fastapi
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi import responses, WebSocket, Request, Header
+from starlette.websockets import WebSocketState
 import uvicorn
 from uuid import uuid4
 import secrets
@@ -12,7 +13,7 @@ from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 from typing import Annotated
-from contextlib import asynccontextmanager
+from json.decoder import JSONDecodeError
 
 from config import Config
 from database import Database
@@ -117,10 +118,10 @@ STOP = False
 async def connection_cleanup(app: fastapi.FastAPI):
     while not STOP:
         for connection in manager.active_connections:
-            if connection.websocket.client_state == 3:
-                manager.disconnect(connection.websocket)
+            if connection.websocket.client_state == WebSocketState.DISCONNECTED:
+                manager.disconnect(connection)
 
-        await asyncio.sleep(60)
+        await asyncio.sleep(10)
 
 async def lifespan(app: fastapi.FastAPI):
     asyncio.create_task(connection_cleanup(app))
@@ -512,9 +513,11 @@ async def agent_ws(websocket: fastapi.WebSocket, uuid: str):
             data = await websocket.receive_json()
             await conn._rec_buffer.put(data)
             await db.agents.update_one(Schemas.AgentSchema(uuid=uuid), {"$set": {"last_seen": int(time.time())}})
-    except fastapi.WebSocketDisconnect as e:
+    except fastapi.WebSocketDisconnect:
         manager.disconnect(websocket)
         return
+    except JSONDecodeError:
+        pass
 
 
 @app.get("/user/{uuid}")

