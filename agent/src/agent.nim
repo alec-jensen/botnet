@@ -1,6 +1,3 @@
-# This is just an example to get you started. A typical binary package
-# uses this file as the main entry point of the application.
-
 import std/json
 import std/strutils
 import osproc
@@ -83,4 +80,3 @@ when isMainModule:
     except Exception as e:
       echo e.msg
       waitFor sleepAsync(5000) 
-      
