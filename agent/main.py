@@ -6,6 +6,7 @@ import json
 import os
 import traceback
 import sys
+import platform
 
 debugMode = True
 
@@ -54,7 +55,7 @@ async def main():
                 await ws.send(json.dumps({
                     "secret": SECRET,
                     "platform": sys.platform,
-                    "architecture": sys.maxsize > 2 ** 32 and "64bit" or "32bit",
+                    "architecture": platform.machine(),
                     "vm": IS_VM
                 }))
                 res = await ws.recv()

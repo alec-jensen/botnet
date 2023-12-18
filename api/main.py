@@ -12,6 +12,7 @@ from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 from typing import Annotated
+from contextlib import asynccontextmanager
 
 from config import Config
 from database import Database
@@ -111,7 +112,22 @@ config: Config = Config()
 
 db: Database = Database(config.dbstring)
 
-app = fastapi.FastAPI(title="Botnet API")
+STOP = False
+
+async def connection_cleanup(app: fastapi.FastAPI):
+    while not STOP:
+        for connection in manager.active_connections:
+            if connection.websocket.client_state == 3:
+                manager.disconnect(connection.websocket)
+
+        await asyncio.sleep(60)
+
+async def lifespan(app: fastapi.FastAPI):
+    asyncio.create_task(connection_cleanup(app))
+    yield
+    stop = True
+
+app = fastapi.FastAPI(title="Botnet API", lifespan=lifespan)
 
 origins = [
     "*"
@@ -735,6 +751,8 @@ def main():
             args.host = os.environ.get("API_HOST")
 
     uvicorn.run(app, host=args.host, port=args.port)
+
+    stop = True
 
 
 if __name__ == "__main__":
