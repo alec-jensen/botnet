@@ -49,13 +49,14 @@ class UUIDAndToken(BaseModel):
 
 
 class Connection:
-    def __init__(self, websocket: WebSocket, uuid: str, platform: str = None, architecture: str = None, vm: bool = None):
+    def __init__(self, websocket: WebSocket, uuid: str, platform: str = None, architecture: str = None, vm: bool = None, version: int = None):
         self.websocket = websocket
         self.uuid = uuid
         self._rec_buffer = asyncio.Queue()
         self.platform = platform
         self.architecture = architecture
         self.vm = vm
+        self.version = version
 
     async def send_json(self, message: dict):
         await self.websocket.send_json(message)
@@ -206,6 +207,7 @@ async def get_agent(request: Request, uuid: str):
         agent["platform"] = conn.platform
         agent["architecture"] = conn.architecture
         agent["vm"] = conn.vm
+        agent["version"] = conn.version
         agent["connected"] = True
     else:
         agent["connected"] = False
@@ -507,6 +509,7 @@ async def agent_ws(websocket: fastapi.WebSocket, uuid: str):
     conn.platform = data.get("platform")
     conn.architecture = data.get("architecture")
     conn.vm = data.get("vm")
+    conn.version = data.get("version")
 
     try:
         while True:
