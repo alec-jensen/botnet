@@ -69,7 +69,13 @@ proc main() {.async.} =
           await ws.send($(%*{"status": 403, "error": "Command not allowed in a virtual machine"}))
 
     if packet{"command"}.getStr() != "":
-      var res = exec_cmd_ex(packet{"command"}.getStr())
+      var res: tuple[output: string, exitCode: int]
+
+      try:
+        res = exec_cmd_ex(packet{"command"}.getStr())
+      except OSError as e:
+        await ws.send($(%*{"status": 500, "output": e.msg}))
+        continue
 
       await ws.send($(%*{"status": 200, "output": res.output}))
 
