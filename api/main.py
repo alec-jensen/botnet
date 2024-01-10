@@ -77,6 +77,11 @@ class ConnectionManager:
         return None
 
     async def connect(self, websocket: WebSocket, uuid: str):
+        for conn in self.active_connections:
+            if conn.uuid == uuid:
+                await websocket.close(code=1000, reason="Already connected.")
+                return
+
         await websocket.accept()
         self.active_connections.append(Connection(websocket, uuid))
 
