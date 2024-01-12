@@ -187,6 +187,10 @@
       });
   }
 
+  setInterval(() => {
+    loadAgents();
+  }, 1000);
+
   function editAgent(name, description, version) {
     let data = {
       name: name,

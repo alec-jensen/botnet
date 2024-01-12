@@ -128,6 +128,8 @@ async def connection_cleanup(app: fastapi.FastAPI):
                 manager.disconnect(connection)
             if connection.websocket.client is None:
                 manager.disconnect(connection)
+            if connection is None:
+                manager.disconnect(connection)
 
 
         await asyncio.sleep(10)
@@ -470,6 +472,8 @@ async def send_command(request: Request, authorization: Annotated[str | None, He
     conn = manager.get_connection(uuid)
 
     try:
+        if conn is None:
+            return responses.JSONResponse({"error": "Agent not found."}, status_code=404)
         res = await conn.receive_json()
     except fastapi.WebSocketDisconnect as e:
         return responses.JSONResponse({"error": "Agent not connected."}, status_code=401)
