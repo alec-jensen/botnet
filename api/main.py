@@ -512,6 +512,8 @@ async def agent_ws(websocket: fastapi.WebSocket, uuid: str):
         await manager.disconnect(websocket)
         return
     
+    await db.agents.update_one(Schemas.AgentSchema(uuid=uuid), {"$set": {"last_seen": int(time.time())}})
+    
     conn = manager.get_connection(uuid)
 
     conn.platform = data.get("platform")
