@@ -126,6 +126,9 @@ async def connection_cleanup(app: fastapi.FastAPI):
         for connection in manager.active_connections:
             if connection.websocket.client_state == WebSocketState.DISCONNECTED:
                 manager.disconnect(connection)
+            if connection.websocket.client is None:
+                manager.disconnect(connection)
+
 
         await asyncio.sleep(10)
 
@@ -269,7 +272,7 @@ async def get_agents(request: Request, authorization: Annotated[str | None, Head
 
         conn = manager.get_connection(agent.get("uuid"))
 
-        if conn is not None:
+        if conn is not None and conn.websocket.client_state == WebSocketState.CONNECTED and conn.websocket.client is not None:
             agent["ip"] = conn.websocket.client.host
             agent["platform"] = conn.platform
             agent["architecture"] = conn.architecture
