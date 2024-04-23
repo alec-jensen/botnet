@@ -74,23 +74,21 @@ class Schemas:
             })
 
     class UserSchema(BaseSchema):
-        def __init__(self, uuid: str | None = None, username: str | None = None, password: str | None = None, created_at: int | None = None, is_allowed: bool | None = None, auth_token: str | None = None, auth_timeout: int | None = None) -> None:
+        def __init__(self, uuid: str | None = None, username: str | None = None, password: str | None = None, created_at: int | None = None, is_allowed: bool | None = None, auth_bearers: dict[str, dict[str, int | str]] | None = None) -> None:
             self.uuid: str | None = convert_except_none(uuid, str)
             self.username: str | None = convert_except_none(username, str)
             self.password: str | None = convert_except_none(password, str)
             self.created_at: int | None = convert_except_none(created_at, int)
             self.is_allowed: bool | None = convert_except_none(
                 is_allowed, bool)
-            self.auth_token: str | None = convert_except_none(auth_token, str)
-            self.auth_timeout: int | None = convert_except_none(
-                auth_timeout, int)
+            self.auth_bearers: dict[str, dict[str, int | str]] | None = auth_bearers
 
         @classmethod
         def from_dict(cls, data: dict | None) -> 'Schemas.UserSchema':
             if data is None:
                 return cls()
 
-            return cls(data.get('uuid', None), data.get('username', None), data.get('password', None), data.get('created_at', None), data.get('is_allowed', None), data.get('auth_token', None), data.get('auth_timeout', None))
+            return cls(data.get('uuid', None), data.get('username', None), data.get('password', None), data.get('created_at', None), data.get('is_allowed', None), data.get('auth_bearers', None))
 
         def to_dict(self) -> dict:
             return remove_none_values({
@@ -99,8 +97,7 @@ class Schemas:
                 'password': self.password,
                 'created_at': self.created_at,
                 'is_allowed': self.is_allowed,
-                'auth_token': self.auth_token,
-                'auth_timeout': self.auth_timeout
+                'auth_bearers': self.auth_bearers
             })
 
 

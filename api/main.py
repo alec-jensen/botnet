@@ -134,8 +134,31 @@ async def connection_cleanup(app: fastapi.FastAPI):
 
         await asyncio.sleep(10)
 
+async def clean_expired_tokens(app: fastapi.FastAPI):
+    while not STOP:
+        users = await db.users.find({}, Schemas.UserSchema)
+        assert isinstance(users, list)
+
+        user: Schemas.UserSchema
+        for user in users:
+            if user.auth_bearers is None:
+                continue
+
+            auth_bearers = user.auth_bearers.copy()
+
+            for auth_token in auth_bearers:
+                if user.auth_bearers[auth_token]["time"] < time.time():
+                    del user.auth_bearers[auth_token]
+
+            diff = {"$set": {"auth_bearers": user.auth_bearers}}
+
+            await db.users.update_one(Schemas.UserSchema(uuid=user.uuid), diff)
+
+        await asyncio.sleep(60*60) # 1 hour
+
 async def lifespan(app: fastapi.FastAPI):
     asyncio.create_task(connection_cleanup(app))
+    asyncio.create_task(clean_expired_tokens(app))
     yield
     stop = True
 
@@ -159,6 +182,50 @@ app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
+async def authenticate(bearer: Annotated[str | None, Header()] = Header(None)):
+    if bearer is None:
+        return False
+    if not bearer.startswith("Bearer "):
+        return False
+
+    bearer = bearer.replace("Bearer ", "")
+
+    try:
+        index, uuid, token = bearer.split("::")
+    except:
+        return False
+
+    user = await db.users.find_one(Schemas.UserSchema(uuid=uuid))
+    assert isinstance(user, Schemas.UserSchema)
+
+    if user is None:
+        return False
+    
+    if not user.is_allowed:
+        return False
+    
+    if user.auth_bearers is None:
+        return False
+
+    token_valid = False
+
+    for auth_token in user.auth_bearers:
+        if index != user.auth_bearers[auth_token]["index"]:
+            continue
+
+        if user.auth_bearers[auth_token]["time"] < time.time():
+            return False
+        
+        if pwd_context.verify(token, auth_token):
+            token_valid = True
+            break
+
+    if token_valid:
+        return True
+    
+    return False
+    
 
 # TODO: make this a post request
 @app.get("/agent/register")
@@ -234,28 +301,8 @@ async def get_agents(request: Request, authorization: Annotated[str | None, Head
     :return: The agents.
     """
 
-    if authorization is None:
-        return responses.JSONResponse({"error": "No token provided."}, status_code=401)
-    
-    try:
-        authorization = authorization.replace("Bearer ", "")
-        uuid, authorization = authorization.split("::")
-    except:
+    if not await authenticate(authorization):
         return responses.JSONResponse({"error": "Invalid token."}, status_code=401)
-    
-    user: Schemas.UserSchema = await db.users.find_one(Schemas.UserSchema(uuid=uuid))
-
-    if user is None:
-        return responses.JSONResponse({"error": "User not found."}, status_code=404)
-    
-    try:
-        if not pwd_context.verify(authorization, user.auth_token):
-            return responses.JSONResponse({"error": "Invalid token."}, status_code=401)
-    except:
-        return responses.JSONResponse({"error": "Invalid token."}, status_code=401)
-    
-    if user.auth_timeout < time.time():
-        return responses.JSONResponse({"error": "Token has expired."}, status_code=401)
 
     if page < 0:
         return responses.JSONResponse({"error": "Invalid page number."}, status_code=401)
@@ -301,28 +348,8 @@ async def send_command_to_agents(request: Request, authorization: Annotated[str 
     :return: The agent's information.
     """
 
-    if authorization is None:
-        return responses.JSONResponse({"error": "No token provided."}, status_code=401)
-    
-    try:
-        authorization = authorization.replace("Bearer ", "")
-        uuid, authorization = authorization.split("::")
-    except:
+    if not await authenticate(authorization):
         return responses.JSONResponse({"error": "Invalid token."}, status_code=401)
-    
-    user: Schemas.UserSchema = await db.users.find_one(Schemas.UserSchema(uuid=uuid))
-
-    if user is None:
-        return responses.JSONResponse({"error": "User not found."}, status_code=404)
-    
-    try:
-        if not pwd_context.verify(authorization, user.auth_token):
-            return responses.JSONResponse({"error": "Invalid token."}, status_code=401)
-    except:
-        return responses.JSONResponse({"error": "Invalid token."}, status_code=401)
-    
-    if user.auth_timeout < time.time():
-        return responses.JSONResponse({"error": "Token has expired."}, status_code=401)
 
     if command.limitations is not None:
         for limitation in command.limitations:
@@ -374,43 +401,8 @@ async def update_agent(request: Request, authorization: Annotated[str | None, He
     :return: The agent's information.
     """
 
-    if authorization is None:
-        return responses.JSONResponse({"error": "No token provided."}, status_code=401)
-    
-    try:
-        authorization = authorization.replace("Bearer ", "")
-        auth_uuid, authorization = authorization.split("::")
-    except:
+    if not await authenticate(authorization):
         return responses.JSONResponse({"error": "Invalid token."}, status_code=401)
-    
-    # Check if uuid is a user or agent
-
-    user: Schemas.UserSchema = await db.users.find_one(Schemas.UserSchema(uuid=auth_uuid))
-
-    if user is not None:
-        try:
-            if not pwd_context.verify(authorization, user.auth_token):
-                return responses.JSONResponse({"error": "Invalid token."}, status_code=401)
-        except:
-            return responses.JSONResponse({"error": "Invalid token."}, status_code=401)
-        
-        if user.auth_timeout < time.time():
-            return responses.JSONResponse({"error": "Token has expired."}, status_code=401)
-        
-        if not user.is_allowed:
-            return responses.JSONResponse({"error": "User not allowed."}, status_code=401)
-        
-    agent: Schemas.AgentSchema = await db.agents.find_one(Schemas.AgentSchema(uuid=auth_uuid))
-
-    if agent is not None:
-        try:
-            if not pwd_context.verify(authorization, agent.secret):
-                return responses.JSONResponse({"error": "Invalid token."}, status_code=401)
-        except:
-            return responses.JSONResponse({"error": "Invalid token."}, status_code=401)
-        
-    if agent is None and user is None:
-        return responses.JSONResponse({"error": "User or agent not found."}, status_code=404)
 
     agent: Schemas.AgentSchema = await db.agents.find_one(Schemas.AgentSchema(uuid=uuid))
 
@@ -444,28 +436,8 @@ async def send_command(request: Request, authorization: Annotated[str | None, He
     :return: The agent's information.
     """
 
-    if authorization is None:
-        return responses.JSONResponse({"error": "No token provided."}, status_code=401)
-    
-    try:
-        authorization = authorization.replace("Bearer ", "")
-        auth_uuid, authorization = authorization.split("::")
-    except:
+    if not await authenticate(authorization):
         return responses.JSONResponse({"error": "Invalid token."}, status_code=401)
-    
-    user: Schemas.UserSchema = await db.users.find_one(Schemas.UserSchema(uuid=auth_uuid))
-
-    if user is None:
-        return responses.JSONResponse({"error": "User not found."}, status_code=404)
-    
-    try:
-        if not pwd_context.verify(authorization, user.auth_token):
-            return responses.JSONResponse({"error": "Invalid token."}, status_code=401)
-    except:
-        return responses.JSONResponse({"error": "Invalid token."}, status_code=401)
-    
-    if user.auth_timeout < time.time():
-        return responses.JSONResponse({"error": "Token has expired."}, status_code=401)
 
     await manager.send_personal_message({"command": command.command, "limitations": command.limitations}, uuid)
 
@@ -545,29 +517,8 @@ async def get_user(request: Request, authorization: Annotated[str | None, Header
     :return: The user's information.
     """
 
-    authorization = authorization.replace("Bearer ", "")
-
-    try:
-        auth_uuid, authorization = authorization.split("::")
-    except:
+    if not await authenticate(authorization):
         return responses.JSONResponse({"error": "Invalid token."}, status_code=401)
-
-    auth_user = await db.users.find_one(Schemas.UserSchema(uuid=auth_uuid))
-
-    if auth_user is None:
-        return responses.JSONResponse({"error": "User not found."}, status_code=404)
-    
-    if authorization is None:
-        return responses.JSONResponse({"error": "No token provided."}, status_code=401)
-    
-    try:
-        if not pwd_context.verify(authorization, auth_user.auth_token):
-            return responses.JSONResponse({"error": "Invalid token."}, status_code=401)
-    except:
-        return responses.JSONResponse({"error": "Invalid token."}, status_code=401)
-    
-    if auth_user.auth_timeout < time.time():
-        return responses.JSONResponse({"error": "Token has expired."}, status_code=401)
     
     user: Schemas.UserSchema = await db.users.find_one(Schemas.UserSchema(uuid=uuid))
 
@@ -617,80 +568,82 @@ async def login_user(request: Request, user: User):
     if not dbuser.is_allowed:
         return responses.JSONResponse({"error": "User not allowed."}, status_code=401)
 
-    diff = {"$set": {"auth_token": "", "auth_timeout": 0}}
-
     auth_token = secrets.token_urlsafe(32)
-    dbuser.auth_token = auth_token
 
     auth_token_hashed = pwd_context.hash(auth_token)
-    diff["$set"]["auth_token"] = auth_token_hashed
 
-    auth_token_timeout = int(time.time()) + 5260000  # 2 months
-    dbuser.auth_timeout = auth_token_timeout
-    diff["$set"]["auth_timeout"] = auth_token_timeout
+    if dbuser.auth_bearers is None:
+        dbuser.auth_bearers = {}
 
-    dbuser.auth_token = f"{dbuser.uuid}::{auth_token}"
+    # index is used to keep a pointer to which token is the correct one, as the hashed token is stored in the database
+    index = secrets.token_urlsafe(8)
+
+    dbuser.auth_bearers[auth_token_hashed] = {"time": int(time.time()) + 5260000, # 2 months
+                                                "index": index}
+
+    diff = {"$set": {"auth_bearers": dbuser.auth_bearers}}
+
+    dict_user = content=dbuser.to_dict()
+
+    dict_user["auth_token"] = f"{index}::{dbuser.uuid}::{auth_token}"
 
     await db.users.update_one(Schemas.UserSchema(username=user.username), diff)
 
-    return responses.JSONResponse(dbuser.to_dict(), status_code=200)
+    return responses.JSONResponse(dict_user, status_code=200)
 
 @app.post('/user/verify')
 async def verify_token(request: Request, authorization: Annotated[str | None, Header()]):
+    if not await authenticate(authorization):
+        return responses.JSONResponse({"error": "Invalid token."}, status_code=401)
+    
     authorization = authorization.replace("Bearer ", "")
 
     try:
-        uuid, authorization = authorization.split("::")
+        index, uuid, authorization = authorization.split("::")
     except:
         return responses.JSONResponse({"error": "Invalid token."}, status_code=401)
     
-    user: Schemas.UserSchema = await db.users.find_one(Schemas.UserSchema(uuid=uuid))
-
-    if user is None:
-        return responses.JSONResponse({"error": "User not found."}, status_code=404)
-    
-    try:
-        if not pwd_context.verify(authorization, user.auth_token):
-            return responses.JSONResponse({"error": "Invalid token."}, status_code=401)
-    except:
-        return responses.JSONResponse({"error": "Invalid token."}, status_code=401)
-    
-    if user.auth_timeout < time.time():
-        return responses.JSONResponse({"error": "Token has expired."}, status_code=401)
+    user = await db.users.find_one(Schemas.UserSchema(uuid=uuid))
     
     return responses.JSONResponse(user.to_dict(), status_code=200)
     
 @app.post('/user/renew')
 async def renew_token(request: Request, authorization: Annotated[str | None, Header()]):
+    if not await authenticate(authorization):
+        return responses.JSONResponse({"error": "Invalid token."}, status_code=401)
+    
     authorization = authorization.replace("Bearer ", "")
 
     try:
-        uuid, authorization = authorization.split("::")
+        index, uuid, authorization = authorization.split("::")
     except:
         return responses.JSONResponse({"error": "Invalid token."}, status_code=401)
 
     user: Schemas.UserSchema = await db.users.find_one(Schemas.UserSchema(uuid=uuid))
-
-    if user is None:
-        return responses.JSONResponse({"error": "User not found."}, status_code=404)
-    if not pwd_context.verify(authorization, user.auth_token):
-        return responses.JSONResponse({"error": "Invalid token."}, status_code=401)
-    if user.auth_timeout < time.time():
-        return responses.JSONResponse({"error": "Token has expired."}, status_code=401)
     
-    diff = {"$set": {"auth_token": "", "auth_timeout": 0}}
+    # diff = {"$set": {"auth_token": "", "auth_timeout": 0}}
+
+    # auth_token = secrets.token_urlsafe(32)
+    # user.auth_token = auth_token
+
+    # auth_token_hashed = pwd_context.hash(auth_token)
+    # diff["$set"]["auth_token"] = auth_token_hashed
+
+    # auth_token_timeout = int(time.time()) + 5260000  # 2 months
+    # user.auth_timeout = auth_token_timeout
+    # diff["$set"]["auth_timeout"] = auth_token_timeout
+
+    # user.auth_token = f"{user.uuid}::{auth_token}"
 
     auth_token = secrets.token_urlsafe(32)
-    user.auth_token = auth_token
-
     auth_token_hashed = pwd_context.hash(auth_token)
-    diff["$set"]["auth_token"] = auth_token_hashed
 
-    auth_token_timeout = int(time.time()) + 5260000  # 2 months
-    user.auth_timeout = auth_token_timeout
-    diff["$set"]["auth_timeout"] = auth_token_timeout
+    if user.auth_bearers is None:
+        user.auth_bearers = {}
 
-    user.auth_token = f"{user.uuid}::{auth_token}"
+    user.auth_bearers[auth_token_hashed] = int(time.time()) + 5260000 # 2 months
+
+    diff = {"$set": {"auth_bearers": user.auth_bearers}}
 
     await db.users.update_one(Schemas.UserSchema(uuid=uuid), diff)
 
@@ -698,23 +651,54 @@ async def renew_token(request: Request, authorization: Annotated[str | None, Hea
 
 @app.post("/user/invalidate_token")
 async def invalidate_token(request: Request, authorization: Annotated[str | None, Header()]):
+    # authorization = authorization.replace("Bearer ", "")
+
+    # try:
+    #     uuid, authorization = authorization.split("::")
+    # except:
+    #     return responses.JSONResponse({"error": "Invalid token."}, status_code=401)
+
+    # user: Schemas.UserSchema = await db.users.find_one(Schemas.UserSchema(uuid=uuid))
+
+    # if user is None:
+    #     return responses.JSONResponse({"error": "User not found."}, status_code=404)
+    # if not pwd_context.verify(authorization, user.auth_token):
+    #     return responses.JSONResponse({"error": "Invalid token."}, status_code=401)
+    # if user.auth_timeout < time.time():
+    #     return responses.JSONResponse({"error": "Token has expired."}, status_code=401)
+
+    # diff = {"$set": {"auth_token": "", "auth_timeout": 0}}
+
+    # await db.users.update_one(Schemas.UserSchema(uuid=uuid), diff)
+
+    if not await authenticate(authorization):
+        return responses.JSONResponse({"error": "Invalid token."}, status_code=401)
+    
     authorization = authorization.replace("Bearer ", "")
 
     try:
-        uuid, authorization = authorization.split("::")
+        index, uuid, authorization = authorization.split("::")
     except:
         return responses.JSONResponse({"error": "Invalid token."}, status_code=401)
-
-    user: Schemas.UserSchema = await db.users.find_one(Schemas.UserSchema(uuid=uuid))
+    
+    user = await db.users.find_one(Schemas.UserSchema(uuid=uuid))
+    assert isinstance(user, Schemas.UserSchema)
 
     if user is None:
         return responses.JSONResponse({"error": "User not found."}, status_code=404)
-    if not pwd_context.verify(authorization, user.auth_token):
-        return responses.JSONResponse({"error": "Invalid token."}, status_code=401)
-    if user.auth_timeout < time.time():
-        return responses.JSONResponse({"error": "Token has expired."}, status_code=401)
+    
+    if user.auth_bearers is None:
+        return responses.JSONResponse({"error": "No tokens found."}, status_code=404)
+    
+    for auth_token in user.auth_bearers:
+        if index != user.auth_bearers[auth_token]["index"]:
+            continue
 
-    diff = {"$set": {"auth_token": "", "auth_timeout": 0}}
+        if pwd_context.verify(authorization, auth_token):
+            del user.auth_bearers[auth_token]
+            break
+
+    diff = {"$set": {"auth_bearers": user.auth_bearers}}
 
     await db.users.update_one(Schemas.UserSchema(uuid=uuid), diff)
 
@@ -723,24 +707,10 @@ async def invalidate_token(request: Request, authorization: Annotated[str | None
 
 @app.post("/user/{uuid}/allow")
 async def authorize_user(request: Request, uuid: str, authorization: Annotated[str | None, Header()]):
-    authorization = authorization.replace("Bearer ", "")
-
-    try:
-        uuid, authorization = authorization.split("::")
-    except:
+    if not await authenticate(authorization):
         return responses.JSONResponse({"error": "Invalid token."}, status_code=401)
-
-    user: Schemas.UserSchema = await db.users.find_one(Schemas.UserSchema(uuid=uuid))
-
-    if user is None:
-        return responses.JSONResponse({"error": "User not found."}, status_code=404)
-    if not pwd_context.verify(authorization, user.auth_token):
-        return responses.JSONResponse({"error": "Invalid token."}, status_code=401)
-    if user.auth_timeout > time.time():
-        return responses.JSONResponse({"error": "Token has expired."}, status_code=401)
     
-    if not user.is_allowed:
-        return responses.JSONResponse({"error": "User not allowed."}, status_code=401)
+    user: Schemas.UserSchema = await db.users.find_one(Schemas.UserSchema(uuid=uuid))
 
     target: Schemas.UserSchema = await db.users.find_one(Schemas.UserSchema(uuid=uuid))
 

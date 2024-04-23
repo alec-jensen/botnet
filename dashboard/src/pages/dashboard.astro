@@ -8,7 +8,7 @@
 
   let token = getCookie("token");
 
-  let uuid = token.split("::")[0];
+  let uuid = token.split("::")[1];
 
   fetch(`${API_URL}/user/verify`, {
     method: "POST",
