@@ -1,1 +1,1 @@
-export const API_URL = 'https://api.botnet.alecj.tk';
+export const API_URL = 'http://localhost:8000';
