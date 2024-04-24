@@ -48,7 +48,7 @@
         })
         .then((res) => {
           let expiryMS = res.auth_timeout * 1000;
-          setCookie("token", res.auth_token, expiryMS);
+          setCookie("token", res.auth_token);
           window.location.href = "/dashboard";
         });
       return;
