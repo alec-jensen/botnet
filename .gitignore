@@ -4,3 +4,4 @@ venv
 config.json
 agent/src/agent
 agent.exe
+agent

@@ -2,8 +2,6 @@ version: '3'
 
 services:
   dashboard:
-    depends_on:
-      - api
     image: botnet-dashboard
     ports:
       - "80:4321"
