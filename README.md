@@ -1,6 +1,6 @@
 # botnet
 
-This is a simple botnet written in python. It is not complete, but it is functional. It is meant to be used for educational purposes only.
+This  is meant to be used for purely educational purposes only.
 
 ## Usage
 
